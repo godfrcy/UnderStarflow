@@ -239,8 +239,9 @@ class Designer:
 
         cx, cy = mx - CANVAS_X, my - CANVAS_Y
 
+        self.input_active = False  # 点击任何地方先关闭输入
+
         if in_canvas and btn == 1:
-            if self.mode == "design":
                 # 检查是否点击了已有子弹 → 开始拖拽
                 found = self._find(cx, cy)
                 if found is not None:
@@ -329,7 +330,7 @@ class Designer:
         e = self.pattern.events[self.edit_idx]
 
         # ── 删除按钮 ──
-        del_btn = pygame.Rect(PANEL_X + PANEL_W - 120, PANEL_Y + 45 - 8, 116, 28)
+        del_btn = pygame.Rect(PANEL_X + PANEL_W - 120, PANEL_Y + 62 - 8, 116, 28)
         if del_btn.collidepoint(mx, my):
             del self.pattern.events[self.edit_idx]
             self.edit_idx = -1; self.mode = "design"
@@ -351,22 +352,22 @@ class Designer:
                 self._msg(f"轨迹: {TRAJ_NAMES[t]} — 拖拽画布设置方向向量"); return
 
         # ── 可点击的输入字段 (右列参数区) ──
-        # 速度输入框 (参数第3行: py = y+28 + 60)
-        speed_box = pygame.Rect(PANEL_X + 460, PANEL_Y + 28 + 80, 100, 20)
-        if speed_box.collidepoint(mx, my):
-            self.input_active = True; self.input_field = "speed"
-            self.input_text = f"{e.speed:.1f}"
-            self._msg("输入速度，Enter确认"); return
-
-        # 生命输入框
-        life_box = pygame.Rect(PANEL_X + 460, PANEL_Y + 28 + 40, 100, 20)
+        # 存活帧 (行1, py=PANEL_Y+62+28+20 = PANEL_Y+110)
+        life_box = pygame.Rect(PANEL_X + 460, PANEL_Y + 110, 100, 20)
         if life_box.collidepoint(mx, my):
             self.input_active = True; self.input_field = "lifetime"
             self.input_text = str(e.lifetime)
             self._msg("输入存活帧数，Enter确认"); return
 
+        # 速度 (行2, py=PANEL_Y+62+28+40 = PANEL_Y+130)
+        speed_box = pygame.Rect(PANEL_X + 460, PANEL_Y + 130, 100, 20)
+        if speed_box.collidepoint(mx, my):
+            self.input_active = True; self.input_field = "speed"
+            self.input_text = f"{e.speed:.1f}"
+            self._msg("输入速度，Enter确认"); return
+
         # ── 搜索框 ──
-        search_box = pygame.Rect(PANEL_X + 5, PANEL_Y + 38, 140, 24)
+        search_box = pygame.Rect(PANEL_X + 5, PANEL_Y + 36, 140, 22)
         if search_box.collidepoint(mx, my):
             self.input_active = True; self.input_field = "search"
             self.input_text = ""
@@ -567,7 +568,7 @@ class Designer:
         self.screen.blit(self.fm.render("🔍 细节模式", True, (255,255,255) if self.mode=="detail" else (160,160,160)), (x+bw+14, y+7))
 
         # ── 搜索框 (模式按钮下方) ──
-        search_box = pygame.Rect(x+5, y+38, 140, 24)
+        search_box = pygame.Rect(x+5, y+36, 140, 22)
         search_bg = (60, 60, 80) if self.input_active and self.input_field=="search" else (45, 45, 58)
         pygame.draw.rect(self.screen, search_bg, search_box)
         pygame.draw.rect(self.screen, (120, 120, 150), search_box, 1)
@@ -575,9 +576,9 @@ class Designer:
         self.screen.blit(st, (x+10, y+10))
 
         if self.mode == "design":
-            self._draw_design_help(x, y+45)
+            self._draw_design_help(x, y+62)
         else:
-            self._draw_detail_panel(x, y+45)
+            self._draw_detail_panel(x, y+62)
 
     def _draw_design_help(self, x, y):
         for i, line in enumerate([
