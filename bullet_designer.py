@@ -1,13 +1,20 @@
 """
-弹幕设计器 (Bullet Pattern Designer)
-=====================================
+弹幕设计器 v2 (Bullet Pattern Designer)
+=======================================
 面向 Under Starflow 的可视化弹幕模式编辑器。
-在等同游戏战斗区域的画布上设计弹幕，实时预览，导出 JSON 供游戏加载。
 
-操作:
-  鼠标: 画布上拖拽放置弹幕起点，时间线选择帧，属性面板修改参数
-  键盘: 空格播放/暂停，方向键控制灵魂，1-8切换弹幕类型
-  文件: 导出 JSON 到 assetsDB/patterns/
+两模式操作：
+  设计模式 (Tab)  — 在画布上点击放置子弹初始位置
+  细节模式 (Tab)  — 选中子弹后设置消亡时间、轨迹类型、速度
+
+导出 JSON 到 assetsDB/patterns/，游戏用 @pattern_name 引用。
+
+键位：
+  空格    播放/暂停预览
+  方向键  控制灵魂
+  Tab     切换设计/细节模式
+  Delete  删除选中子弹
+  Ctrl+S  保存
 """
 
 import pygame
@@ -15,99 +22,109 @@ import json
 import os
 import math
 import random
-from datetime import datetime
+import sys
 
 # ─── 常量 ───────────────────────────────────────────────
-WINDOW_W, WINDOW_H = 1100, 650
-CANVAS_W, CANVAS_H = 400, 300        # 等同游戏 battle_box
-CANVAS_OFFSET_X = 20
-CANVAS_OFFSET_Y = 50
-GRID_SIZE = 20                        # 网格大小
-TIMELINE_Y = 520                      # 时间线 Y 位置
-TIMELINE_X = CANVAS_OFFSET_X
-TIMELINE_W = CANVAS_W
-TIMELINE_H = 40
-PANEL_X = CANVAS_OFFSET_X + CANVAS_W + 40
+WINDOW_W, WINDOW_H = 1100, 680
+CANVAS_W, CANVAS_H = 400, 300
+CANVAS_X, CANVAS_Y = 20, 50
+GRID = 20
+TIMELINE_Y = 530
+TIMELINE_X = 20
+TIMELINE_W = 400
+TIMELINE_H = 36
+PANEL_X = 460
 PANEL_Y = 50
-PANEL_W = 240
-HEART_SIZE = 16
-
+PANEL_W = 620
+HEART_SIZE = 14
 FPS = 60
-DEFAULT_DURATION = 480                # 默认 8 秒
+MAX_DURATION = 480  # 8 秒
 
-# 弹幕类型定义
-BULLET_TYPES = {
-    "normal":       {"name": "普通子弹", "color": (255, 255, 255), "size": (10, 10), "icon": "●"},
-    "laser":        {"name": "延时激光", "color": (255, 0, 0),     "size": (20, 200),"icon": "▌"},
-    "cube":         {"name": "方块",     "color": (200, 200, 100), "size": (24, 24), "icon": "■"},
-    "circle":       {"name": "圆形弹幕", "color": (100, 200, 255), "size": (8, 8),   "icon": "◎"},
-    "plasma_blade": {"name": "等离子刃", "color": (0, 255, 255),   "size": (60, 8),  "icon": "▬"},
-    "laser_network": {"name": "激光网",  "color": (0, 100, 255),   "size": (400, 4), "icon": "┅"},
-    "yellow_line":  {"name": "黄线",     "color": (255, 255, 0),   "size": (30, 4),  "icon": "─"},
-    "targeted":     {"name": "追踪弹",   "color": (255, 100, 100), "size": (12, 12), "icon": "⊕"},
+# 弹幕类型预设
+BTYPES = {
+    "normal":       ("● 普通子弹", (255, 255, 255), (10, 10)),
+    "laser":        ("▌ 延时激光", (255, 80, 80),   (24, 240)),
+    "cube":         ("■ 方块",     (200, 200, 100), (24, 24)),
+    "circle":       ("◎ 圆环",     (100, 200, 255), (8, 8)),
+    "plasma_blade": ("▬ 等离子刃", (0, 255, 255),   (80, 8)),
+    "laser_net":    ("┅ 激光网",   (0, 120, 255),   (400, 6)),
+    "yellow_line":  ("─ 黄线",     (255, 255, 0),   (36, 4)),
+    "homing":       ("⊕ 追踪弹",   (255, 140, 100), (12, 12)),
 }
 
+# 轨迹类型
+TRAJECTORIES = ["straight", "curve_sin", "curve_arc", "homing", "spread"]
+
 # ─── 字体 ───────────────────────────────────────────────
-def get_font(size):
-    """简单的字体加载（不需要游戏引擎的字体系统）"""
-    font_paths = [
-        r"C:\Windows\Fonts\simhei.ttf",
-        r"C:\Windows\Fonts\msyh.ttc",
-    ]
-    for p in font_paths:
+def _get_font(size):
+    for p in [r"C:\Windows\Fonts\simhei.ttf", r"C:\Windows\Fonts\msyh.ttc"]:
         if os.path.exists(p):
             return pygame.font.Font(p, size)
     return pygame.font.Font(None, size)
 
-
-# ─── BulletEvent ────────────────────────────────────────
+# ─── 数据模型 ──────────────────────────────────────────
 class BulletEvent:
-    """单个弹幕生成事件"""
-    def __init__(self, time=0, btype="normal"):
-        self.time = time
-        self.btype = btype
-        self.count = 1
-        self.interval = 0        # 0 = 同时生成; >0 = 每隔N帧生成一个
-        self.x = 200             # 画布内 X (0-400)
-        self.y = 0               # 画布内 Y (0-300)
-        self.vx = 0.0            # X 速度
-        self.vy = 3.0            # Y 速度
-        self.width = BULLET_TYPES[btype]["size"][0]
-        self.height = BULLET_TYPES[btype]["size"][1]
-        self.color = list(BULLET_TYPES[btype]["color"])
+    def __init__(self, x=200, y=20):
+        self.x = x; self.y = y
+        self.spawn_frame = 0       # 出现时机（帧）
+        self.lifetime = 120        # 存活帧数（最大480）
+        self.btype = "normal"
+        self.w, self.h = 10, 10
+        self.color = [255, 255, 255]
+        self.trajectory = "straight"
+        self.speed = 3.0           # 像素/帧
+        self.angle = 90            # 方向角度 (0=右, 90=下, 180=左, 270=上)
+        self.curve_amp = 40        # 曲线振幅
+        self.curve_freq = 3.0      # 曲线频率
+        self.count = 1             # 同帧生成数量
+        self.spread_angle = 30     # 散射角度
         self.damage = 1
-        self.warning = 60        # laser 预警帧数
-        self.tracking = False    # laser 追踪
-        self.direction = 1       # plasma_blade 方向
-        self.axis = "h"          # laser_network 轴向
-        self.spread_angle = 0    # 散射角度
-        self.note = ""           # 自定义备注
+        self.note = ""
 
     def to_dict(self):
         return {k: v for k, v in self.__dict__.items()}
 
     @classmethod
     def from_dict(cls, d):
-        e = cls(d.get("time", 0), d.get("btype", "normal"))
+        e = cls()
         for k, v in d.items():
             if hasattr(e, k):
                 setattr(e, k, v)
         return e
 
+    def get_velocity(self, frame_offset=0):
+        """根据轨迹类型和时间偏移计算速度向量"""
+        rad = math.radians(self.angle)
+        base_vx = math.cos(rad) * self.speed
+        base_vy = math.sin(rad) * self.speed
 
-# ─── BulletPattern ──────────────────────────────────────
-class BulletPattern:
-    """弹幕模式：一组 BulletEvent + 元数据"""
+        if self.trajectory == "straight":
+            return base_vx, base_vy
+        elif self.trajectory == "curve_sin":
+            # 正弦波：垂直方向叠加振荡
+            phase = frame_offset * 0.1 * self.curve_freq
+            osc = math.sin(phase) * self.curve_amp * 0.3
+            return base_vx + osc, base_vy
+        elif self.trajectory == "curve_arc":
+            # 弧线：逐渐弯曲
+            bend = frame_offset * 0.02 * self.curve_freq
+            return base_vx + math.sin(bend) * self.curve_amp * 0.2, base_vy
+        elif self.trajectory == "homing":
+            return 0, 0  # homing is handled differently in-game
+        elif self.trajectory == "spread":
+            return base_vx, base_vy
+        return base_vx, base_vy
+
+class Pattern:
     def __init__(self, name="new_pattern"):
         self.name = name
-        self.duration = DEFAULT_DURATION
-        self.events = []
+        self.duration = MAX_DURATION
         self.description = ""
+        self.events = []
 
     def to_dict(self):
         return {
-            "name": self.name,
-            "duration": self.duration,
+            "name": self.name, "duration": self.duration,
             "description": self.description,
             "events": [e.to_dict() for e in self.events]
         }
@@ -115,572 +132,462 @@ class BulletPattern:
     @classmethod
     def from_dict(cls, d):
         p = cls(d.get("name", "loaded"))
-        p.duration = d.get("duration", DEFAULT_DURATION)
+        p.duration = d.get("duration", MAX_DURATION)
         p.description = d.get("description", "")
         p.events = [BulletEvent.from_dict(e) for e in d.get("events", [])]
         return p
 
-
-# ─── 编辑器主类 ──────────────────────────────────────────
-class BulletDesigner:
+# ─── 编辑器 ────────────────────────────────────────────
+class Designer:
     def __init__(self):
         pygame.init()
         self.screen = pygame.display.set_mode((WINDOW_W, WINDOW_H))
-        pygame.display.set_caption("弹幕设计器 - Bullet Pattern Designer")
+        pygame.display.set_caption("弹幕设计器 v2 — Design / Detail 模式")
         self.clock = pygame.time.Clock()
         self.running = True
 
-        # 字体
-        self.font_sm = get_font(14)
-        self.font_md = get_font(18)
-        self.font_lg = get_font(24)
+        self.fs = _get_font(14)
+        self.fm = _get_font(18)
+        self.fl = _get_font(24)
 
-        # 画布表面
-        self.canvas_surf = pygame.Surface((CANVAS_W, CANVAS_H))
-        self.grid_surf = self._make_grid_surf()
-
-        # 当前模式
-        self.pattern = BulletPattern()
+        self.pattern = Pattern()
         self.selected_idx = -1
-
-        # 播放状态
+        self.mode = "design"       # "design" | "detail"
         self.playing = False
         self.play_frame = 0
-        self.heart_pos = [CANVAS_W // 2, CANVAS_H // 2]  # 灵魂位置（画布坐标）
-
-        # 预览子弹（播放时生成的实际子弹实例）
+        self.heart = [CANVAS_W // 2, CANVAS_H // 2]
         self.preview_bullets = []
+        self.dragging = None
+        self.msg = ""
+        self.msg_timer = 0
+        self.patterns_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assetsDB", "patterns")
 
-        # 拖拽状态
-        self.dragging_event = None  # 正在拖拽的 event
-        self.drag_offset = (0, 0)
-        self.timeline_drag = False
+        # 画布
+        self.canvas = pygame.Surface((CANVAS_W, CANVAS_H))
+        self.grid_surf = self._make_grid()
 
-        # 消息
-        self.message = ""
-        self.message_timer = 0
+    def _make_grid(self):
+        s = pygame.Surface((CANVAS_W, CANVAS_H), pygame.SRCALPHA)
+        for x in range(0, CANVAS_W, GRID):
+            pygame.draw.line(s, (50, 50, 60, 60), (x, 0), (x, CANVAS_H))
+        for y in range(0, CANVAS_H, GRID):
+            pygame.draw.line(s, (50, 50, 60, 60), (0, y), (CANVAS_W, y))
+        return s
 
-        # 文件路径
-        self.current_file = None
-        self.patterns_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                          "assetsDB", "patterns")
-
-    def _make_grid_surf(self):
-        """生成网格覆盖图"""
-        surf = pygame.Surface((CANVAS_W, CANVAS_H), pygame.SRCALPHA)
-        for x in range(0, CANVAS_W, GRID_SIZE):
-            pygame.draw.line(surf, (60, 60, 60, 80), (x, 0), (x, CANVAS_H))
-        for y in range(0, CANVAS_H, GRID_SIZE):
-            pygame.draw.line(surf, (60, 60, 60, 80), (0, y), (CANVAS_W, y))
-        return surf
-
-    def show_message(self, msg):
-        self.message = msg
-        self.message_timer = 180
+    def msg_show(self, m):
+        self.msg = m; self.msg_timer = 120
 
     def run(self):
         while self.running:
-            dt = self.clock.tick(FPS)
-            self._handle_events()
+            self.clock.tick(FPS)
+            self._events()
             self._update()
             self._draw()
         pygame.quit()
 
-    # ─── 事件处理 ────────────────────────────────────────
-    def _handle_events(self):
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
+    # ─── 输入 ──────────────────────────────────────────
+    def _events(self):
+        for ev in pygame.event.get():
+            if ev.type == pygame.QUIT:
                 self.running = False
+            elif ev.type == pygame.KEYDOWN:
+                self._key(ev)
+            elif ev.type == pygame.MOUSEBUTTONDOWN:
+                self._mousedown(ev)
+            elif ev.type == pygame.MOUSEBUTTONUP:
+                self.dragging = None
+            elif ev.type == pygame.MOUSEMOTION:
+                self._mousemove(ev)
 
-            elif event.type == pygame.KEYDOWN:
-                self._handle_key(event)
-
-            elif event.type == pygame.MOUSEBUTTONDOWN:
-                self._handle_mouse_down(event)
-
-            elif event.type == pygame.MOUSEBUTTONUP:
-                self._handle_mouse_up(event)
-
-            elif event.type == pygame.MOUSEMOTION:
-                self._handle_mouse_move(event)
-
-    def _handle_key(self, event):
-        if event.key == pygame.K_SPACE:
+    def _key(self, ev):
+        k = ev.key
+        if k == pygame.K_SPACE:
             self._toggle_play()
-
-        elif event.key == pygame.K_r and pygame.key.get_mods() & pygame.KMOD_CTRL:
-            self._reset()
-
-        elif event.key == pygame.K_s and pygame.key.get_mods() & pygame.KMOD_CTRL:
-            self._save()
-
-        elif event.key == pygame.K_o and pygame.key.get_mods() & pygame.KMOD_CTRL:
-            self._load_dialog()
-
-        elif event.key == pygame.K_e and pygame.key.get_mods() & pygame.KMOD_CTRL:
-            self._export()
-
-        elif event.key == pygame.K_DELETE:
-            self._delete_selected()
-
-        elif event.key == pygame.K_ESCAPE:
+        elif k == pygame.K_TAB:
+            self.mode = "detail" if self.mode == "design" else "design"
+            self.msg_show(f"切换到 {'细节模式' if self.mode == 'detail' else '设计模式'}")
+        elif k == pygame.K_DELETE and self.selected_idx >= 0:
+            del self.pattern.events[self.selected_idx]
             self.selected_idx = -1
-            self.dragging_event = None
+            self.msg_show("已删除")
+        elif k == pygame.K_ESCAPE:
+            self.selected_idx = -1
+        elif k == pygame.K_s and pygame.key.get_mods() & pygame.KMOD_CTRL:
+            self._save()
+        elif k == pygame.K_o and pygame.key.get_mods() & pygame.KMOD_CTRL:
+            self._load_first()
+        elif k == pygame.K_r and pygame.key.get_mods() & pygame.KMOD_CTRL:
+            self.pattern = Pattern()
+            self.selected_idx = -1
+            self.msg_show("已重置")
+        elif k in (pygame.K_UP, pygame.K_DOWN, pygame.K_LEFT, pygame.K_RIGHT) and self.playing:
+            sp = 4
+            if k == pygame.K_LEFT:  self.heart[0] -= sp
+            if k == pygame.K_RIGHT: self.heart[0] += sp
+            if k == pygame.K_UP:    self.heart[1] -= sp
+            if k == pygame.K_DOWN:  self.heart[1] += sp
+            self.heart[0] = max(0, min(self.heart[0], CANVAS_W))
+            self.heart[1] = max(0, min(self.heart[1], CANVAS_H))
+        # 细节模式：调整参数
+        if self.mode == "detail" and self.selected_idx >= 0:
+            evt = self.pattern.events[self.selected_idx]
+            step = 5 if pygame.key.get_mods() & pygame.KMOD_SHIFT else 1
+            if k == pygame.K_LEFT:  evt.x -= step
+            if k == pygame.K_RIGHT: evt.x += step
+            if k == pygame.K_UP:    evt.y -= step
+            if k == pygame.K_DOWN:  evt.y += step
+            if k == pygame.K_w:     evt.spawn_frame = max(0, evt.spawn_frame - step * 5)
+            if k == pygame.K_s:     evt.spawn_frame = min(MAX_DURATION, evt.spawn_frame + step * 5)
+            if k == pygame.K_e:     evt.lifetime = max(1, evt.lifetime - step * 10)
+            if k == pygame.K_d:     evt.lifetime = min(MAX_DURATION, evt.lifetime + step * 10)
+            if k == pygame.K_q:     evt.speed = max(0.5, evt.speed - 0.5)
+            if k == pygame.K_a:     evt.speed = min(20, evt.speed + 0.5)
 
-        elif event.key in range(pygame.K_1, pygame.K_9):
-            self._quick_add_bullet(event.key - pygame.K_1)
+    def _mousedown(self, ev):
+        mx, my = ev.pos
+        btn = ev.button
+        in_canvas = CANVAS_X <= mx <= CANVAS_X + CANVAS_W and CANVAS_Y <= my <= CANVAS_Y + CANVAS_H
+        in_timeline = TIMELINE_X <= mx <= TIMELINE_X + TIMELINE_W and TIMELINE_Y <= my <= TIMELINE_Y + TIMELINE_H
+        in_panel = PANEL_X <= mx <= PANEL_X + PANEL_W
 
-        elif event.key in (pygame.K_UP, pygame.K_DOWN, pygame.K_LEFT, pygame.K_RIGHT):
-            if self.playing:
-                speed = 4
-                k = event.key
-                if k == pygame.K_LEFT:  self.heart_pos[0] -= speed
-                if k == pygame.K_RIGHT: self.heart_pos[0] += speed
-                if k == pygame.K_UP:    self.heart_pos[1] -= speed
-                if k == pygame.K_DOWN:  self.heart_pos[1] += speed
-                self.heart_pos[0] = max(0, min(self.heart_pos[0], CANVAS_W))
-                self.heart_pos[1] = max(0, min(self.heart_pos[1], CANVAS_H))
-
-        elif event.key == pygame.K_PAGEUP and self.selected_idx >= 0:
-            self.pattern.events[self.selected_idx].time = max(0,
-                self.pattern.events[self.selected_idx].time - 10)
-        elif event.key == pygame.K_PAGEDOWN and self.selected_idx >= 0:
-            self.pattern.events[self.selected_idx].time = min(self.pattern.duration,
-                self.pattern.events[self.selected_idx].time + 10)
-
-    def _handle_mouse_down(self, event):
-        mx, my = event.pos
-
-        # 检查画布区域
-        if self._in_canvas(mx, my):
-            cx, cy = mx - CANVAS_OFFSET_X, my - CANVAS_OFFSET_Y  # 画布坐标
-
-            if event.button == 1:  # 左键：选中或放置
-                found = self._find_event_at(cx, cy)
+        if in_canvas and btn == 1:
+            cx, cy = mx - CANVAS_X, my - CANVAS_Y
+            if self.mode == "design":
+                # 放置新子弹
+                e = BulletEvent(int(cx), int(cy))
+                e.spawn_frame = self.play_frame
+                self.pattern.events.append(e)
+                self.selected_idx = len(self.pattern.events) - 1
+                self.msg_show(f"放置子弹 #{self.selected_idx} at ({e.x},{e.y}) 帧{e.spawn_frame}")
+            elif self.mode == "detail":
+                # 选中已有子弹
+                found = self._find_event(cx, cy)
                 if found is not None:
                     self.selected_idx = found
-                    self.dragging_event = self.pattern.events[found]
-                    self.drag_offset = (cx - self.dragging_event.x, cy - self.dragging_event.y)
+                    self.dragging = found
+                    self.msg_show(f"选中 #{found}")
                 else:
-                    # 新弹幕：在当前帧放置
-                    btype = "normal"
-                    evt = BulletEvent(self.play_frame, btype)
-                    evt.x = int(cx)
-                    evt.y = int(cy)
-                    self.pattern.events.append(evt)
-                    self.selected_idx = len(self.pattern.events) - 1
-                    self.show_message(f"添加弹幕: {BULLET_TYPES[btype]['name']} at ({evt.x},{evt.y})")
-
-            elif event.button == 3:  # 右键：删除
-                found = self._find_event_at(cx, cy)
-                if found is not None:
-                    del self.pattern.events[found]
                     self.selected_idx = -1
 
-        # 检查时间线区域
-        elif self._in_timeline(mx, my):
+        elif in_timeline and btn == 1:
             tx = mx - TIMELINE_X
-            frame = int((tx / TIMELINE_W) * self.pattern.duration)
-            self.play_frame = max(0, min(frame, self.pattern.duration))
-            self.timeline_drag = True
-
-        # 检查属性面板
-        elif self._in_panel(mx, my):
-            self._handle_panel_click(mx, my)
-
-    def _handle_mouse_up(self, event):
-        self.dragging_event = None
-        self.timeline_drag = False
-
-    def _handle_mouse_move(self, event):
-        mx, my = event.pos
-
-        if self.dragging_event and self._in_canvas(mx, my):
-            cx, cy = mx - CANVAS_OFFSET_X, my - CANVAS_OFFSET_Y
-            self.dragging_event.x = max(0, min(int(cx - self.drag_offset[0]), CANVAS_W))
-            self.dragging_event.y = max(0, min(int(cy - self.drag_offset[1]), CANVAS_H))
-
-        if self.timeline_drag:
-            tx = max(0, min(mx - TIMELINE_X, TIMELINE_W))
             self.play_frame = int((tx / TIMELINE_W) * self.pattern.duration)
 
-    # ─── 更新 ────────────────────────────────────────────
+        elif in_panel and btn == 1 and self.mode == "detail" and self.selected_idx >= 0:
+            self._panel_click(mx, my)
+
+    def _mousemove(self, ev):
+        if self.dragging is not None:
+            mx, my = ev.pos
+            if CANVAS_X <= mx <= CANVAS_X + CANVAS_W and CANVAS_Y <= my <= CANVAS_Y + CANVAS_H:
+                self.pattern.events[self.dragging].x = max(0, min(int(mx - CANVAS_X), CANVAS_W))
+                self.pattern.events[self.dragging].y = max(0, min(int(my - CANVAS_Y), CANVAS_H))
+
+    def _find_event(self, cx, cy):
+        best, best_d = None, 20
+        for i, e in enumerate(self.pattern.events):
+            d = math.hypot(e.x - cx, e.y - cy)
+            if d < best_d:
+                best_d = d; best = i
+        return best
+
+    def _panel_click(self, mx, my):
+        """处理细节面板的点击"""
+        evt = self.pattern.events[self.selected_idx]
+        ry = my - PANEL_Y
+
+        # 弹幕类型按钮（第一列，8个按钮，每个高24）
+        btypes = list(BTYPES.keys())
+        for i, t in enumerate(btypes):
+            by = 30 + i * 25
+            if by <= ry <= by + 22:
+                evt.btype = t
+                evt.w, evt.h = BTYPES[t][2]
+                evt.color = list(BTYPES[t][1])
+                self.msg_show(f"类型: {BTYPES[t][0]}")
+                return
+
+        # 轨迹类型按钮（第二列）
+        for i, t in enumerate(TRAJECTORIES):
+            by = 30 + i * 25
+            tx = 200
+            if tx <= mx - PANEL_X <= tx + 180 and by <= ry <= by + 22:
+                evt.trajectory = t
+                self.msg_show(f"轨迹: {t}")
+                return
+
+    # ─── 更新 ──────────────────────────────────────────
     def _update(self):
-        if self.message_timer > 0:
-            self.message_timer -= 1
-            if self.message_timer == 0:
-                self.message = ""
-
+        if self.msg_timer > 0:
+            self.msg_timer -= 1
         if self.playing:
-            self.play_frame = (self.play_frame + 1) % (self.pattern.duration + 60)
+            self.play_frame += 1
             if self.play_frame >= self.pattern.duration:
-                self.stop_playing()
-            self._spawn_preview_bullets()
-        self._update_preview_bullets()
+                self.playing = False
+                self.preview_bullets.clear()
+            self._spawn_preview()
+            self._update_preview()
 
-    def _update_preview_bullets(self):
+    def _spawn_preview(self):
+        for evt in self.pattern.events:
+            if evt.spawn_frame == self.play_frame:
+                for i in range(evt.count):
+                    angle_off = (i - (evt.count - 1) / 2) * evt.spread_angle
+                    rad = math.radians(evt.angle + angle_off)
+                    spd = evt.speed
+                    self.preview_bullets.append({
+                        "x": evt.x, "y": evt.y,
+                        "vx": math.cos(rad) * spd,
+                        "vy": math.sin(rad) * spd,
+                        "w": evt.w, "h": evt.h,
+                        "color": evt.color, "type": evt.btype,
+                        "life": evt.lifetime,
+                        "traj": evt.trajectory,
+                        "amp": evt.curve_amp, "freq": evt.curve_freq,
+                        "born": self.play_frame,
+                    })
+
+    def _update_preview(self):
         for b in self.preview_bullets[:]:
+            age = self.play_frame - b["born"]
+            if b["traj"] == "curve_sin":
+                b["vx"] += math.sin(age * 0.05 * (b["freq"] / 3)) * b["amp"] * 0.03
+            elif b["traj"] == "curve_arc":
+                b["vy"] += 0.05
+
             b["x"] += b["vx"]
             b["y"] += b["vy"]
             b["life"] -= 1
-            # 边界删除
-            if (b["life"] <= 0 or b["x"] < -50 or b["x"] > CANVAS_W + 50 or
-                b["y"] < -50 or b["y"] > CANVAS_H + 50):
+            if b["life"] <= 0 or b["x"] < -60 or b["x"] > CANVAS_W + 60 or b["y"] < -60 or b["y"] > CANVAS_H + 60:
                 self.preview_bullets.remove(b)
 
-    def _spawn_preview_bullets(self):
-        """在当前 play_frame 生成预览子弹"""
-        for evt in self.pattern.events:
-            if evt.interval > 0:
-                # 间隔生成：检查播放帧是否匹配 (time + n*interval)
-                offset = self.play_frame - evt.time
-                if offset >= 0 and offset % evt.interval == 0 and offset // evt.interval < evt.count:
-                    self._spawn_event_bullet(evt)
-            else:
-                # 单次生成
-                if evt.time == self.play_frame:
-                    self._spawn_event_bullet(evt)
-
-    def _spawn_event_bullet(self, evt):
-        """根据 BulletEvent 生成一个预览子弹"""
-        for i in range(evt.count):
-            offset_x = i * (evt.spread_angle * 5 if evt.spread_angle else 0)
-            self.preview_bullets.append({
-                "x": evt.x + offset_x,
-                "y": evt.y,
-                "vx": evt.vx,
-                "vy": evt.vy,
-                "w": evt.width,
-                "h": evt.height,
-                "color": evt.color,
-                "type": evt.btype,
-                "life": 300,
-                "warning": evt.warning,
-            })
-
-    # ─── 碰撞检测辅助 ─────────────────────────────────────
-    def _in_canvas(self, mx, my):
-        return (CANVAS_OFFSET_X <= mx <= CANVAS_OFFSET_X + CANVAS_W and
-                CANVAS_OFFSET_Y <= my <= CANVAS_OFFSET_Y + CANVAS_H)
-
-    def _in_timeline(self, mx, my):
-        return (TIMELINE_X <= mx <= TIMELINE_X + TIMELINE_W and
-                TIMELINE_Y <= my <= TIMELINE_Y + TIMELINE_H)
-
-    def _in_panel(self, mx, my):
-        return (PANEL_X <= mx <= PANEL_X + PANEL_W and
-                PANEL_Y <= my <= PANEL_Y + 400)
-
-    def _find_event_at(self, cx, cy):
-        """在画布坐标找最近的弹幕事件，返回索引"""
-        best, best_dist = None, 30
-        for i, evt in enumerate(self.pattern.events):
-            dist = math.hypot(evt.x - cx, evt.y - cy)
-            if dist < best_dist:
-                best_dist = dist
-                best = i
-        return best
-
-    # ─── 播放控制 ─────────────────────────────────────────
     def _toggle_play(self):
+        self.playing = not self.playing
         if self.playing:
-            self.stop_playing()
+            self.play_frame = 0
+            self.preview_bullets.clear()
+            self.heart = [CANVAS_W // 2, CANVAS_H // 2]
         else:
-            self.start_playing()
+            self.preview_bullets.clear()
 
-    def start_playing(self):
-        self.playing = True
-        self.play_frame = 0
-        self.preview_bullets = []
-        self.heart_pos = [CANVAS_W // 2, CANVAS_H // 2]
-
-    def stop_playing(self):
-        self.playing = False
-        self.preview_bullets = []
-
-    def _reset(self):
-        self.pattern = BulletPattern()
-        self.selected_idx = -1
-        self.playing = False
-        self.play_frame = 0
-        self.preview_bullets = []
-        self.show_message("已重置")
-
-    def _delete_selected(self):
-        if self.selected_idx >= 0 and self.selected_idx < len(self.pattern.events):
-            evt = self.pattern.events[self.selected_idx]
-            del self.pattern.events[self.selected_idx]
-            self.selected_idx = -1
-            self.show_message(f"已删除弹幕事件")
-
-    def _quick_add_bullet(self, idx):
-        """数字键 1-8 快速添加弹幕到当前帧、画布中央"""
-        types = list(BULLET_TYPES.keys())
-        if idx < len(types):
-            btype = types[idx]
-            evt = BulletEvent(self.play_frame, btype)
-            evt.x, evt.y = CANVAS_W // 2, 20
-            self.pattern.events.append(evt)
-            self.selected_idx = len(self.pattern.events) - 1
-            self.show_message(f"添加 {BULLET_TYPES[btype]['name']}")
-
-    # ─── 属性面板交互 ────────────────────────────────────
-    def _handle_panel_click(self, mx, my):
-        """简化：点击面板修改选中弹幕的类型"""
-        if self.selected_idx < 0:
-            return
-        evt = self.pattern.events[self.selected_idx]
-        rel_y = my - PANEL_Y
-        # 弹幕类型按钮
-        types = list(BULLET_TYPES.keys())
-        btn_h = 28
-        for i, t in enumerate(types):
-            btn_y = 30 + i * btn_h
-            if btn_y <= rel_y <= btn_y + btn_h:
-                evt.btype = t
-                evt.color = list(BULLET_TYPES[t]["color"])
-                evt.width, evt.height = BULLET_TYPES[t]["size"]
-                self.show_message(f"类型改为: {BULLET_TYPES[t]['name']}")
-                return
-
-    # ─── 文件操作 ────────────────────────────────────────
     def _save(self):
-        """保存为 .json 文件"""
         os.makedirs(self.patterns_dir, exist_ok=True)
         name = self.pattern.name.replace(" ", "_").lower()
         path = os.path.join(self.patterns_dir, f"{name}.json")
         with open(path, "w", encoding="utf-8") as f:
             json.dump(self.pattern.to_dict(), f, ensure_ascii=False, indent=2)
-        self.current_file = path
-        self.show_message(f"已保存: {path}")
+        self.msg_show(f"已保存: {path}")
 
-    def _load_dialog(self):
-        """列出已有模式供选择"""
+    def _load_first(self):
         os.makedirs(self.patterns_dir, exist_ok=True)
         files = [f for f in os.listdir(self.patterns_dir) if f.endswith(".json")]
-        if not files:
-            self.show_message("没有找到已保存的模式")
-            return
-        # 自动加载第一个（简化版，后续可加菜单）
-        path = os.path.join(self.patterns_dir, files[0])
-        self._load_file(path)
-
-    def _load_file(self, path):
-        try:
+        if files:
+            path = os.path.join(self.patterns_dir, files[0])
             with open(path, "r", encoding="utf-8") as f:
-                data = json.load(f)
-            self.pattern = BulletPattern.from_dict(data)
-            self.current_file = path
+                self.pattern = Pattern.from_dict(json.load(f))
             self.selected_idx = -1
-            self.playing = False
-            self.show_message(f"已加载: {os.path.basename(path)}")
-        except Exception as e:
-            self.show_message(f"加载失败: {e}")
+            self.msg_show(f"已加载: {files[0]}")
+        else:
+            self.msg_show("没有已保存的模式")
 
-    def _export(self):
-        """导出（同保存）"""
-        self._save()
-
-    # ─── 绘制 ────────────────────────────────────────────
+    # ─── 绘制 ──────────────────────────────────────────
     def _draw(self):
-        self.screen.fill((30, 30, 40))
-
+        self.screen.fill((25, 25, 38))
         self._draw_canvas()
         self._draw_timeline()
-        self._draw_panel()
-        self._draw_status_bar()
-        self._draw_message()
-
+        if self.mode == "detail":
+            self._draw_detail_panel()
+        else:
+            self._draw_design_panel()
+        self._draw_status()
         pygame.display.flip()
 
     def _draw_canvas(self):
-        # 背景
-        pygame.draw.rect(self.screen, (15, 15, 25),
-                         (CANVAS_OFFSET_X - 2, CANVAS_OFFSET_Y - 2,
-                          CANVAS_W + 4, CANVAS_H + 4), 2)
-        self.screen.blit(self.canvas_surf, (CANVAS_OFFSET_X, CANVAS_OFFSET_Y))
-        self.canvas_surf.fill((10, 10, 18))
+        # 边框
+        pygame.draw.rect(self.screen, (80, 80, 100),
+                         (CANVAS_X - 2, CANVAS_Y - 2, CANVAS_W + 4, CANVAS_H + 4), 2)
 
-        # 网格
-        self.canvas_surf.blit(self.grid_surf, (0, 0))
+        # 填充
+        self.canvas.fill((12, 12, 20))
+        self.canvas.blit(self.grid_surf, (0, 0))
 
-        # 弹幕事件
+        # 绘制弹幕事件
         for i, evt in enumerate(self.pattern.events):
-            is_selected = (i == self.selected_idx)
-            # 根据播放帧高亮
-            alpha = 255 if not self.playing or evt.time > self.play_frame else 100
-            color = evt.color
-            if is_selected:
-                color = (255, 200, 0)
-                alpha = 255
-
-            # 画形状
-            x, y = evt.x, evt.y
-            w, h = evt.width, evt.height
-
-            # 小尺寸用圆，大尺寸用矩形
-            if max(w, h) < 30:
-                pygame.draw.circle(self.canvas_surf, color, (int(x), int(y)),
-                                   max(4, min(w, h) // 2))
-            else:
-                r = pygame.Rect(x - w // 2, y - h // 2, w, h)
-                pygame.draw.rect(self.canvas_surf, color, r, 2)
-
-            if is_selected:
-                # 选择高亮环
-                pygame.draw.circle(self.canvas_surf, (255, 255, 0),
-                                   (int(x), int(y)), 10, 1)
+            sel = i == self.selected_idx
+            col = (255, 220, 60) if sel else evt.color
+            r = 6 if sel else 4
+            pygame.draw.circle(self.canvas, col, (int(evt.x), int(evt.y)), r)
+            if sel:
+                pygame.draw.circle(self.canvas, (255, 255, 255), (int(evt.x), int(evt.y)), r + 2, 1)
+            # 显示编号
+            label = self.fs.render(str(i), True, (200, 200, 200))
+            self.canvas.blit(label, (evt.x + 8, evt.y - 6))
 
         # 预览子弹
         for b in self.preview_bullets:
-            if b["type"] == "laser" and b["life"] > 300 - b["warning"]:
-                # 预警状态
+            c = b["color"]
+            if b["type"] in ("laser", "laser_net"):
                 r = pygame.Rect(b["x"] - b["w"] // 2, b["y"] - b["h"] // 2, b["w"], b["h"])
-                w_surf = pygame.Surface((b["w"], b["h"]), pygame.SRCALPHA)
-                w_surf.fill((255, 0, 0, 60))
-                self.canvas_surf.blit(w_surf, (b["x"] - b["w"] // 2, b["y"] - b["h"] // 2))
-            elif b["type"] == "laser_network":
-                pygame.draw.line(self.canvas_surf, b["color"],
-                                 (b["x"], b["y"]), (b["x"] + b["w"], b["y"] + b["h"]), 3)
+                pygame.draw.rect(self.canvas, c, r, 1)
             else:
-                pygame.draw.circle(self.canvas_surf, b["color"],
-                                   (int(b["x"]), int(b["y"])), max(3, b["w"] // 2))
+                pygame.draw.circle(self.canvas, c, (int(b["x"]), int(b["y"])), max(3, b["w"] // 2))
 
-        # 灵魂（预览时显示）
+        # 灵魂（预览时）
         if self.playing:
-            hx, hy = int(self.heart_pos[0]), int(self.heart_pos[1])
-            # 红色心形
-            pygame.draw.rect(self.canvas_surf, (255, 0, 0),
-                             (hx - HEART_SIZE // 2, hy - HEART_SIZE // 2,
-                              HEART_SIZE, HEART_SIZE))
-            # 白色边框
-            pygame.draw.rect(self.canvas_surf, (255, 255, 255),
-                             (hx - HEART_SIZE // 2, hy - HEART_SIZE // 2,
-                              HEART_SIZE, HEART_SIZE), 1)
+            hx, hy = int(self.heart[0]), int(self.heart[1])
+            pygame.draw.rect(self.canvas, (255, 50, 50),
+                             (hx - HEART_SIZE // 2, hy - HEART_SIZE // 2, HEART_SIZE, HEART_SIZE))
+            pygame.draw.rect(self.canvas, (255, 255, 255),
+                             (hx - HEART_SIZE // 2, hy - HEART_SIZE // 2, HEART_SIZE, HEART_SIZE), 1)
+
+        self.screen.blit(self.canvas, (CANVAS_X, CANVAS_Y))
 
         # 画布标签
-        label = self.font_sm.render(f"战斗区域 {CANVAS_W}×{CANVAS_H}", True, (150, 150, 150))
-        self.screen.blit(label, (CANVAS_OFFSET_X, CANVAS_OFFSET_Y - 22))
+        mode_label = self.fm.render(
+            "🎨 设计模式 — 点击放置子弹" if self.mode == "design" else "🔍 细节模式 — 点击选中子弹编辑",
+            True, (180, 180, 200))
+        self.screen.blit(mode_label, (CANVAS_X, CANVAS_Y - 24))
 
     def _draw_timeline(self):
-        # 时间线背景
-        tl_rect = pygame.Rect(TIMELINE_X, TIMELINE_Y, TIMELINE_W, TIMELINE_H)
-        pygame.draw.rect(self.screen, (40, 40, 55), tl_rect)
-        pygame.draw.rect(self.screen, (80, 80, 100), tl_rect, 1)
+        r = pygame.Rect(TIMELINE_X, TIMELINE_Y, TIMELINE_W, TIMELINE_H)
+        pygame.draw.rect(self.screen, (35, 35, 52), r)
+        pygame.draw.rect(self.screen, (80, 80, 100), r, 1)
 
         # 播放头
-        head_x = TIMELINE_X + int((self.play_frame / self.pattern.duration) * TIMELINE_W)
-        pygame.draw.line(self.screen, (255, 50, 50),
-                         (head_x, TIMELINE_Y), (head_x, TIMELINE_Y + TIMELINE_H), 2)
+        px = TIMELINE_X + int((self.play_frame / self.pattern.duration) * TIMELINE_W)
+        pygame.draw.line(self.screen, (255, 60, 60), (px, TIMELINE_Y), (px, TIMELINE_Y + TIMELINE_H), 2)
 
-        # 弹幕事件标记
+        # 标记
         for i, evt in enumerate(self.pattern.events):
-            ex = TIMELINE_X + int((evt.time / self.pattern.duration) * TIMELINE_W)
-            color = (255, 200, 0) if i == self.selected_idx else evt.color
-            pygame.draw.circle(self.screen, color,
-                               (ex, TIMELINE_Y + TIMELINE_H // 2), 5)
+            ex = TIMELINE_X + int((evt.spawn_frame / self.pattern.duration) * TIMELINE_W)
+            col = (255, 220, 60) if i == self.selected_idx else (100, 180, 255)
+            pygame.draw.circle(self.screen, col, (ex, TIMELINE_Y + TIMELINE_H // 2), 5)
 
-        # 时间线刻度
-        for sec in range(0, self.pattern.duration + 60, 60):
-            tx = TIMELINE_X + int((sec / self.pattern.duration) * TIMELINE_W)
-            pygame.draw.line(self.screen, (100, 100, 120),
-                             (tx, TIMELINE_Y + TIMELINE_H + 2),
-                             (tx, TIMELINE_Y + TIMELINE_H + 10), 1)
-            lbl = self.font_sm.render(f"{sec//60}s", True, (120, 120, 140))
-            self.screen.blit(lbl, (tx - 10, TIMELINE_Y + TIMELINE_H + 12))
+        # 文本
+        txt = self.fm.render(f"帧: {self.play_frame}/{self.pattern.duration}  [{self.pattern.duration/60:.1f}s]", True, (200, 200, 200))
+        self.screen.blit(txt, (TIMELINE_X + TIMELINE_W + 12, TIMELINE_Y + 2))
+        btn = self.fm.render("⏸ 暂停" if self.playing else "▶ 播放", True, (200, 150, 50) if self.playing else (100, 200, 100))
+        self.screen.blit(btn, (TIMELINE_X + TIMELINE_W + 12, TIMELINE_Y + 22))
 
-        # 帧数显示
-        frame_text = self.font_md.render(
-            f"帧: {self.play_frame}/{self.pattern.duration}",
-            True, (200, 200, 200))
-        self.screen.blit(frame_text, (TIMELINE_X + TIMELINE_W + 10, TIMELINE_Y + 5))
+    def _draw_design_panel(self):
+        """设计模式面板：操作提示"""
+        x, y = PANEL_X, PANEL_Y
+        pygame.draw.rect(self.screen, (35, 35, 50), (x, y, PANEL_W, 280))
+        pygame.draw.rect(self.screen, (80, 80, 100), (x, y, PANEL_W, 280), 1)
 
-        # 播放按钮
-        btn_text = "⏸ 暂停" if self.playing else "▶ 播放"
-        btn_color = (200, 150, 50) if self.playing else (100, 200, 100)
-        btn = self.font_md.render(btn_text, True, btn_color)
-        self.screen.blit(btn, (TIMELINE_X + TIMELINE_W + 10, TIMELINE_Y + 25))
-
-        # 提示
-        help_lines = [
-            "空格: 播放/暂停",
-            "方向键: 控制灵魂",
-            "1-8: 快速添加弹幕",
-            "Delete: 删除选中",
-            "Ctrl+S: 保存",
-            "Ctrl+R: 重置",
+        lines = [
+            "📋 设计模式操作",
+            "",
+            "点击画布 → 放置子弹初始位置",
+            "点击时间线 → 跳到指定帧",
+            "Tab → 切换到细节模式",
+            "",
+            "放置后切换到细节模式，",
+            "可以设置每个子弹的轨迹。",
+            "",
+            "⏎ 键位速查:",
+            "  空格 播放/暂停预览",
+            "  ↑↓←→ 预览时控制灵魂",
+            "  Delete 删除选中子弹",
+            "  Ctrl+S 保存 JSON",
+            "  Ctrl+O 加载已有模式",
+            "  Ctrl+R 重置",
         ]
-        for i, line in enumerate(help_lines):
-            h = self.font_sm.render(line, True, (100, 100, 110))
-            self.screen.blit(h, (TIMELINE_X, TIMELINE_Y + TIMELINE_H + 35 + i * 18))
+        for i, line in enumerate(lines):
+            c = (200, 200, 200) if not line.startswith("  ") else (150, 150, 170)
+            lbl = self.fs.render(line, True, c)
+            self.screen.blit(lbl, (x + 10, y + 10 + i * 20))
 
-    def _draw_panel(self):
-        # 面板背景
-        panel_rect = pygame.Rect(PANEL_X, PANEL_Y, PANEL_W, 480)
-        pygame.draw.rect(self.screen, (35, 35, 50), panel_rect)
-        pygame.draw.rect(self.screen, (80, 80, 100), panel_rect, 1)
+    def _draw_detail_panel(self):
+        """细节模式面板：编辑选中子弹的参数"""
+        x, y = PANEL_X, PANEL_Y
+        pygame.draw.rect(self.screen, (35, 35, 50), (x, y, PANEL_W, 500))
+        pygame.draw.rect(self.screen, (80, 80, 100), (x, y, PANEL_W, 500), 1)
 
-        title = self.font_lg.render("弹幕类型", True, (200, 200, 200))
-        self.screen.blit(title, (PANEL_X + 10, PANEL_Y + 2))
+        if self.selected_idx < 0 or self.selected_idx >= len(self.pattern.events):
+            lbl = self.fm.render("未选中子弹 — 先点击画布上的子弹", True, (150, 150, 160))
+            self.screen.blit(lbl, (x + 10, y + 10))
+            return
 
-        # 弹幕类型按钮
-        types = list(BULLET_TYPES.keys())
-        for i, t in enumerate(types):
-            info = BULLET_TYPES[t]
-            btn_y = PANEL_Y + 30 + i * 28
-            is_active = (self.selected_idx >= 0 and
-                         self.pattern.events[self.selected_idx].btype == t)
-            bg = (80, 60, 20) if is_active else (50, 50, 65)
-            pygame.draw.rect(self.screen, bg,
-                             (PANEL_X + 5, btn_y, PANEL_W - 10, 26))
-            pygame.draw.rect(self.screen, info["color"],
-                             (PANEL_X + 5, btn_y, PANEL_W - 10, 26), 1)
+        evt = self.pattern.events[self.selected_idx]
 
-            icon = self.font_md.render(info["icon"], True, info["color"])
-            lbl = self.font_sm.render(f"{i+1}. {info['name']}", True, (200, 200, 200))
-            self.screen.blit(icon, (PANEL_X + 10, btn_y + 3))
-            self.screen.blit(lbl, (PANEL_X + 30, btn_y + 4))
+        # 标题
+        title = self.fl.render(f"子弹 #{self.selected_idx}", True, (255, 255, 100))
+        self.screen.blit(title, (x + 10, y + 4))
 
-        # 选中事件的属性
-        if self.selected_idx >= 0:
-            evt = self.pattern.events[self.selected_idx]
-            py = PANEL_Y + 30 + len(types) * 28 + 15
-            self._draw_property_row(py, "帧", str(evt.time))
-            self._draw_property_row(py + 25, "X", str(evt.x))
-            self._draw_property_row(py + 50, "Y", str(evt.y))
-            self._draw_property_row(py + 75, "VX", f"{evt.vx:.1f}")
-            self._draw_property_row(py + 100, "VY", f"{evt.vy:.1f}")
-            self._draw_property_row(py + 125, "数量", str(evt.count))
-            self._draw_property_row(py + 150, "间隔", str(evt.interval))
-            self._draw_property_row(py + 175, "伤害", str(evt.damage))
+        cy = y + 30
 
-    def _draw_property_row(self, y, label, value):
-        lbl = self.font_sm.render(f"{label}: ", True, (150, 150, 160))
-        val = self.font_sm.render(value, True, (255, 255, 255))
-        self.screen.blit(lbl, (PANEL_X + 10, y))
-        self.screen.blit(val, (PANEL_X + 60, y))
+        # 弹幕类型（左侧列）
+        self.screen.blit(self.fs.render("─ 弹幕类型 ─", True, (170, 170, 180)), (x + 5, cy)); cy += 20
+        for t in BTYPES:
+            bg = (70, 50, 20) if evt.btype == t else (45, 45, 60)
+            r = pygame.Rect(x + 5, cy, 185, 22)
+            pygame.draw.rect(self.screen, bg, r)
+            if evt.btype == t:
+                pygame.draw.rect(self.screen, BTYPES[t][1], r, 2)
+            lbl = self.fs.render(BTYPES[t][0], True, BTYPES[t][1])
+            self.screen.blit(lbl, (x + 10, cy + 2))
+            cy += 25
 
-    def _draw_status_bar(self):
-        # 底部状态栏
-        y = WINDOW_H - 25
+        # 轨迹类型（中间列）
+        tx = x + 200
+        cy2 = y + 50
+        self.screen.blit(self.fs.render("─ 轨迹 ─", True, (170, 170, 180)), (tx + 5, cy2)); cy2 += 20
+        traj_labels = {
+            "straight": "→ 直线", "curve_sin": "∿ 正弦波",
+            "curve_arc": "⌒ 弧线", "homing": "⊕ 追踪", "spread": "⌔ 散射"
+        }
+        for t in TRAJECTORIES:
+            bg = (70, 50, 20) if evt.trajectory == t else (45, 45, 60)
+            r = pygame.Rect(tx + 5, cy2, 185, 22)
+            pygame.draw.rect(self.screen, bg, r)
+            if evt.trajectory == t:
+                pygame.draw.rect(self.screen, (100, 200, 255), r, 2)
+            lbl = self.fs.render(traj_labels.get(t, t), True, (200, 200, 200))
+            self.screen.blit(lbl, (tx + 10, cy2 + 2))
+            cy2 += 25
+
+        # 参数区域（右侧列）
+        px = x + 400
+        py = y + 50
+        self.screen.blit(self.fs.render("─ 参数 ─", True, (170, 170, 180)), (px + 5, py)); py += 22
+
+        params = [
+            f"出现帧: {evt.spawn_frame}  (W/S调整)",
+            f"存活帧: {evt.lifetime}  (E/D调整)",
+            f"速度:   {evt.speed:.1f} px/f  (Q/A调整)",
+            f"方向角: {evt.angle}°",
+            f"数量:   {evt.count}",
+            f"散射角: {evt.spread_angle}°",
+            f"曲线振幅: {evt.curve_amp}",
+            f"曲线频率: {evt.curve_freq:.1f}",
+            f"伤害:   {evt.damage}",
+        ]
+        if evt.note:
+            params.append(f"备注: {evt.note}")
+
+        for line in params:
+            lbl = self.fs.render(line, True, (200, 210, 200))
+            self.screen.blit(lbl, (px + 5, py))
+            py += 20
+
+        # 坐标
+        coord = self.fs.render(f"坐标: ({evt.x}, {evt.y})  拖拽画布或方向键微调", True, (140, 140, 160))
+        self.screen.blit(coord, (px + 5, py + 10))
+
+    def _draw_status(self):
+        y = WINDOW_H - 22
         pygame.draw.line(self.screen, (60, 60, 80), (0, y), (WINDOW_W, y))
-        status = f"事件: {len(self.pattern.events)} | 时长: {self.pattern.duration}帧 ({self.pattern.duration/60:.1f}s)"
-        if self.current_file:
-            status += f" | 文件: {os.path.basename(self.current_file)}"
-        lbl = self.font_sm.render(status, True, (120, 120, 140))
+        st = f"模式: {'设计' if self.mode == 'design' else '细节'} | 子弹数: {len(self.pattern.events)} | 时长: {self.pattern.duration}帧 ({self.pattern.duration/60:.1f}s) | Tab切换模式"
+        lbl = self.fs.render(st, True, (130, 130, 150))
         self.screen.blit(lbl, (10, y + 3))
 
-    def _draw_message(self):
-        if self.message:
-            # 半透明浮动消息
-            s = pygame.Surface((WINDOW_W - 40, 40), pygame.SRCALPHA)
-            s.fill((0, 0, 0, 180))
-            self.screen.blit(s, (20, WINDOW_H - 70))
-            lbl = self.font_md.render(self.message, True, (255, 255, 100))
-            self.screen.blit(lbl, (30, WINDOW_H - 65))
+        if self.msg:
+            s = pygame.Surface((WINDOW_W - 40, 30), pygame.SRCALPHA)
+            s.fill((0, 0, 0, 160))
+            self.screen.blit(s, (20, WINDOW_H - 60))
+            self.screen.blit(self.fm.render(self.msg, True, (255, 255, 120)), (30, WINDOW_H - 58))
 
 
-# ─── 入口 ───────────────────────────────────────────────
 if __name__ == "__main__":
-    app = BulletDesigner()
-    app.run()
+    Designer().run()

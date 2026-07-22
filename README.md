@@ -43,6 +43,62 @@ UnderStarflow/
 └── build_game.py        #  备选打包脚本
 ```
 
+## 资源中英文对照
+
+| 英文路径 | 中文原名 | 用途 |
+|----------|----------|------|
+| **敌人 (Enemies)** | | |
+| `characters/enemies/abandoned_robot/` | 废弃机器人 | 废弃机器人精灵 |
+| `characters/enemies/abandoned_robot_mk2/` | 废弃机器人二型 | 废弃机器人变体 |
+| `characters/enemies/berserk_variable/` | 新版变量 | 变量敌人精灵 |
+| `characters/enemies/black_ranger/` | 黑游侠 | 黑游侠BOSS精灵 |
+| `characters/enemies/failure_boss/` | 失败之作 | 失败之作BOSS |
+| `characters/enemies/ghost_soldier/` | 幽灵士兵 | 幽灵士兵精灵 |
+| `characters/enemies/ghost_soldier_mk2/` | d2f465..网格 | 幽灵士兵变体 |
+| `characters/enemies/machine_soldier/` | 机凯种 (jikaizhong) | 机械士兵精灵 |
+| `characters/enemies/new_soldier/` | 新型士兵 | 新型士兵精灵 |
+| `characters/enemies/rebel_leader/` | 义军首领 / 最后一版 | 义军首领精灵 |
+| `characters/enemies/rebel_walker/` | 义军行走 | 义军行走精灵 |
+| `characters/enemies/samurai_ghost/` | 鬼武士 | 鬼武士BOSS精灵 |
+| `characters/enemies/variable/` | 变量 | 原版变量敌人 |
+| `characters/enemies/variable_anim/` | 变量动画 | 变量动画帧 |
+| `characters/enemies/variable_jump/` | 暴走变量_跳跃 | 跳跃型暴走变量 |
+| `characters/enemies/variable_laser/` | 暴走变量_激光 | 激光型暴走变量 |
+| **地图 (Maps)** | | |
+| `maps/base_4/` | 基地4 | 基地第四层地图 |
+| `maps/demo_map/` | demo地图 | 演示地图 |
+| `maps/pipe_nightmare_2_2/` | 管道噩梦2-2 | 鬼武士BOSS房间 |
+| `maps/pipe_nightmare_3_2/` | 管道噩梦3-2 | 深层管道地图 |
+| `maps/pipe_nightmare_3_3/` | 管道噩梦3-3 | 失败之作BOSS房间 |
+| `maps/snow_1_2/` | 雪地1.2 | 雪地第二层 |
+| `maps/snow_1_3/` | 雪地1.3 | 雪地第三层 |
+| `maps/snow_start/` | 雪地grid | 起始雪地 |
+| `maps/tileset_generic/` | 瓦片地图01 | 通用瓦片集 |
+| **物件 (Objects)** | | |
+| `objects/console/` | 操作台 | 控制台道具 |
+| `objects/props/` | 路灯/显示器 | 场景道具 |
+| `objects/bonfire/` | fire_grid | 篝火动画 |
+| **音频 (Audio)** | | |
+| `audio/bgm/city_ruins.mp3` | city ruins.mp3 | 城市废墟BGM |
+| `audio/bgm/heroism.mp3` | 英雄主义.mp3 | 英雄主义BGM |
+| `audio/bgm/hi.mp3` | Hi.MP3 | Hi BGM |
+| `audio/bgm/machine_knight.mp3` | jikaizhong.mp3 | 机凯种战斗BGM |
+| `audio/bgm/new_items.mp3` | new items.mp3 | 道具获取BGM |
+| `audio/bgm/new_map.mp3` | new map.mp3 | 新地图BGM |
+| `audio/bgm/old_doll.mp3` | old doll.mp3 | 旧玩偶BGM |
+| `audio/bgm/oldcore.mp3` | 旧核.mp3 | 管道噩梦BGM |
+| `audio/bgm/the_fish.mp3` | the fish.MP3 | 义军首领BGM |
+| `audio/bgm/the_tree.mp3` | the tree.mp3 | 树BGM |
+| `audio/sfx/glitch.mp3` | 故障音.mp3 | 故障音效 |
+| `audio/sfx/hit_sound.mp3` | sound.MP3 | 击中音效 |
+| **UI** | | |
+| `ui/portraits/anthe_portrait.png` | 阿尔忒半身像 | 对话肖像 |
+| `ui/portraits/portrait_frame.png` | 头像框 | 肖像边框 |
+| `ui/inventory/new_backpack.png` | 新背包图片 | 背包UI |
+| `ui/misc/dialog_box.png` | 对话框 | 对话框背景 |
+| `ui/misc/light_point.png` | 光点透明图 | 光点特效 |
+| `ui/sync_rate.png` | 同步率 | 同步率图标 |
+
 ## 游戏机制
 
 ### 地图系统

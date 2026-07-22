@@ -1,42 +1,76 @@
 {
   "name": "laser_maze",
   "duration": 480,
-  "description": "激光迷宫：延时激光 + 追踪弹组合",
+  "description": "激光迷宫：延时激光+追踪弹",
   "events": [
     {
-      "time": 30, "interval": 120, "count": 3,
-      "btype": "laser",
-      "x": "random(50, 350)",
+      "x": 100,
       "y": 0,
-      "vx": 0, "vy": 0,
-      "width": 30, "height": 300,
-      "color": [255, 50, 50],
-      "warning": 60,
-      "tracking": true,
-      "damage": 2
-    },
-    {
-      "time": 60, "interval": 120, "count": 3,
+      "spawn_frame": 30,
+      "lifetime": 360,
       "btype": "laser",
-      "x": "random(50, 350)",
-      "y": 250,
-      "vx": 0, "vy": 0,
-      "width": 30, "height": 300,
-      "color": [255, 50, 50],
-      "warning": 60,
-      "tracking": true,
-      "damage": 2
+      "w": 24,
+      "h": 300,
+      "color": [
+        255,
+        50,
+        50
+      ],
+      "trajectory": "straight",
+      "speed": 0,
+      "angle": 90,
+      "count": 1,
+      "spread_angle": 0,
+      "curve_amp": 0,
+      "curve_freq": 1,
+      "damage": 2,
+      "note": "左激光"
     },
     {
-      "time": 20, "interval": 40, "count": 10,
-      "btype": "targeted",
+      "x": 300,
+      "y": 0,
+      "spawn_frame": 30,
+      "lifetime": 360,
+      "btype": "laser",
+      "w": 24,
+      "h": 300,
+      "color": [
+        255,
+        50,
+        50
+      ],
+      "trajectory": "straight",
+      "speed": 0,
+      "angle": 90,
+      "count": 1,
+      "spread_angle": 0,
+      "curve_amp": 0,
+      "curve_freq": 1,
+      "damage": 2,
+      "note": "右激光"
+    },
+    {
       "x": 200,
       "y": 150,
-      "vx": 0, "vy": 0,
-      "width": 12, "height": 12,
-      "color": [255, 150, 100],
-      "speed": 3,
-      "damage": 1
+      "spawn_frame": 60,
+      "lifetime": 200,
+      "btype": "homing",
+      "w": 12,
+      "h": 12,
+      "color": [
+        255,
+        140,
+        100
+      ],
+      "trajectory": "homing",
+      "speed": 3.5,
+      "angle": 0,
+      "count": 5,
+      "spread_angle": 30,
+      "curve_amp": 0,
+      "curve_freq": 1,
+      "damage": 1,
+      "note": "追踪弹幕"
     }
   ]
 }

@@ -71,7 +71,8 @@ class PatternRunner:
         self.elapsed += 1
 
         for evt in self.pattern.get("events", []):
-            t = evt.get("time", 0)
+            # 兼容 v1 "time" 和 v2 "spawn_frame"
+            t = evt.get("spawn_frame", evt.get("time", 0))
             interval = evt.get("interval", 0)
             count = evt.get("count", 1)
 
@@ -89,6 +90,37 @@ class PatternRunner:
         if self.elapsed >= self.total_duration:
             self.active = False
 
+    def _compute_velocity(self, evt, frame_offset=0):
+        """根据轨迹类型计算速度向量。支持 v2 designer 的 trajectory 系统。"""
+        trajectory = evt.get("trajectory", "straight")
+        speed = evt.get("speed", 3.0)
+        angle = math.radians(evt.get("angle", 90))
+        curve_amp = evt.get("curve_amp", 40)
+        curve_freq = evt.get("curve_freq", 3.0)
+
+        base_vx = math.cos(angle) * speed
+        base_vy = math.sin(angle) * speed
+
+        if trajectory == "straight":
+            return base_vx, base_vy
+        elif trajectory == "curve_sin":
+            phase = frame_offset * 0.1 * curve_freq
+            osc = math.sin(phase) * curve_amp * 0.3
+            return base_vx + osc, base_vy
+        elif trajectory == "curve_arc":
+            bend = frame_offset * 0.02 * curve_freq
+            return base_vx + math.sin(bend) * curve_amp * 0.2, base_vy
+        elif trajectory == "homing":
+            # 追踪弹：朝向玩家当前位置
+            heart = self.battle.heart_rect
+            dx = heart.centerx - (self.battle.battle_box.left + evt.get("x", 200))
+            dy = heart.centery - (self.battle.battle_box.top + evt.get("y", 0))
+            dist = math.hypot(dx, dy) or 1
+            return (dx / dist) * speed, (dy / dist) * speed
+        elif trajectory == "spread":
+            return base_vx, base_vy
+        return base_vx, base_vy
+
     def _spawn(self, evt, index=0):
         """根据事件数据生成实际子弹"""
         btype = evt.get("btype", "normal")
@@ -98,10 +130,29 @@ class PatternRunner:
         # 解析坐标
         x = _eval_expr(evt.get("x", 200), t=frame, frame=frame)
         y = _eval_expr(evt.get("y", 0), t=frame, frame=frame)
-        vx = _eval_expr(evt.get("vx", 0), t=frame, frame=frame)
-        vy = _eval_expr(evt.get("vy", 3), t=frame, frame=frame)
-        w = evt.get("width", 10)
-        h = evt.get("height", 10)
+
+        # 计算速度（支持轨迹系统 + 散射角度偏移）
+        spread_angle = evt.get("spread_angle", 30)
+        count = evt.get("count", 1)
+        angle_offset = (index - (count - 1) / 2) * spread_angle if count > 1 else 0
+
+        # 临时修改 angle 来计算散射
+        saved_angle = evt.get("angle", 90)
+        evt["angle"] = saved_angle + angle_offset
+
+        vx, vy = self._compute_velocity(evt, frame)
+
+        # 恢复angle
+        evt["angle"] = saved_angle
+
+        # 兼容旧格式：如果字段直接有 vx/vy，优先使用
+        if "vx" in evt and evt["vx"] != 0:
+            vx = _eval_expr(evt.get("vx", 0), t=frame, frame=frame)
+        if "vy" in evt and evt["vy"] != 0:
+            vy = _eval_expr(evt.get("vy", 3), t=frame, frame=frame)
+
+        w = evt.get("w", evt.get("width", 10))
+        h = evt.get("h", evt.get("height", 10))
         color = tuple(evt.get("color", [255, 255, 255]))
         damage = evt.get("damage", 1)
 

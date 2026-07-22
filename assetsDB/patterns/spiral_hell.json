@@ -1,45 +1,53 @@
 {
   "name": "spiral_hell",
   "duration": 480,
-  "description": "螺旋地狱：多波扇形弹幕 + 圆环弹幕交替",
+  "description": "曲线弹幕：正弦波+弧线",
   "events": [
     {
-      "time": 0, "interval": 60, "count": 8,
-      "btype": "spread",
-      "x": "100 + sin(frame * 0.02) * 80",
-      "y": 50,
-      "vx": 0, "vy": 0,
-      "count": 7, "spread_angle": 120,
-      "base_angle": "90 + sin(frame * 0.03) * 30",
-      "width": 8, "height": 8,
-      "color": [200, 200, 255],
-      "speed": 3,
-      "damage": 1
+      "x": 100,
+      "y": 20,
+      "spawn_frame": 0,
+      "lifetime": 400,
+      "btype": "normal",
+      "w": 8,
+      "h": 8,
+      "color": [
+        200,
+        200,
+        255
+      ],
+      "trajectory": "curve_sin",
+      "speed": 3.0,
+      "angle": 90,
+      "count": 1,
+      "curve_amp": 60,
+      "curve_freq": 4,
+      "spread_angle": 0,
+      "damage": 1,
+      "note": "正弦波"
     },
     {
-      "time": 30, "interval": 60, "count": 8,
-      "btype": "spread",
-      "x": "300 - sin(frame * 0.02) * 80",
-      "y": 50,
-      "vx": 0, "vy": 0,
-      "count": 7, "spread_angle": 120,
-      "base_angle": "90 - sin(frame * 0.03) * 30",
-      "width": 8, "height": 8,
-      "color": [255, 200, 200],
-      "speed": 3,
-      "damage": 1
-    },
-    {
-      "time": 120, "interval": 120, "count": 3,
-      "btype": "circle",
-      "x": 200, "y": 150,
-      "vx": 0, "vy": 0,
-      "width": 8, "height": 8,
-      "color": [255, 220, 100],
-      "ring_count": 16,
-      "spread_angle": 15,
-      "speed": 3,
-      "damage": 1
+      "x": 300,
+      "y": 20,
+      "spawn_frame": 10,
+      "lifetime": 400,
+      "btype": "normal",
+      "w": 8,
+      "h": 8,
+      "color": [
+        255,
+        200,
+        200
+      ],
+      "trajectory": "curve_arc",
+      "speed": 2.5,
+      "angle": 90,
+      "count": 1,
+      "curve_amp": 80,
+      "curve_freq": 2,
+      "spread_angle": 0,
+      "damage": 1,
+      "note": "弧线弹幕"
     }
   ]
 }
