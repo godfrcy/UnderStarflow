@@ -108,3 +108,5 @@ UnderStarflow/
 ## 致谢
 
 本项目使用 Trae + Claude 通过 vibecoding 方式开发完成。角色与场景素材由 AI 生成。
+
+更新日志见 [CHANGELOG.md](CHANGELOG.md)
