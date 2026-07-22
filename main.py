@@ -25,7 +25,7 @@ MAP_CONFIG = {
         "folder": "maps/snow_start",
         "next": "snow_1_2",
         "prev": None,
-        "bgm": "audio/bgm/city ruins.mp3",
+        "bgm": "audio/bgm/city_ruins.mp3",
         "bgm_start": 4.0,
         "name": "无主雪地",
         "has_bonfire": True,
@@ -37,7 +37,7 @@ MAP_CONFIG = {
         "folder": "maps/snow_1_2",
         "next": "snow_1_3",
         "prev": "start",
-        "bgm": "audio/bgm/city ruins.mp3",
+        "bgm": "audio/bgm/city_ruins.mp3",
         "bgm_start": 4.0,
         "name": "雪地1.2",
         "has_bonfire": False,
@@ -47,7 +47,7 @@ MAP_CONFIG = {
         "folder": "maps/snow_1_3",
         "next": None,
         "prev": "snow_1_2",
-        "bgm": "audio/bgm/city ruins.mp3",
+        "bgm": "audio/bgm/city_ruins.mp3",
         "bgm_start": 4.0,
         "name": "雪地1.3",
         "has_bonfire": False,
@@ -57,7 +57,7 @@ MAP_CONFIG = {
         "folder": "maps/base_1",
         "next": "base_2",
         "prev": None,
-        "bgm": "audio/bgm/city ruins.mp3",
+        "bgm": "audio/bgm/city_ruins.mp3",
         "bgm_start": 4.0,
         "name": "基地",
         "has_bonfire": True,
@@ -69,7 +69,7 @@ MAP_CONFIG = {
         "folder": "maps/base_2",
         "next": "base_3",
         "prev": "base_1",
-        "bgm": "audio/bgm/city ruins.mp3",
+        "bgm": "audio/bgm/city_ruins.mp3",
         "bgm_start": 4.0,
         "name": "基地深处",
         "has_bonfire": False,
@@ -79,7 +79,7 @@ MAP_CONFIG = {
         "folder": "maps/base_3",
         "next": "base_4",
         "prev": "base_2",
-        "bgm": "audio/bgm/city ruins.mp3",
+        "bgm": "audio/bgm/city_ruins.mp3",
         "bgm_start": 4.0,
         "name": "基地核心",
         "has_bonfire": False,
@@ -89,7 +89,7 @@ MAP_CONFIG = {
         "folder": "maps/pipe_nightmare_1",
         "next": "pipe_nightmare_2",
         "prev": "base_5",
-        "bgm": "audio/bgm/city ruins.mp3",
+        "bgm": "audio/bgm/city_ruins.mp3",
         "bgm_start": 4.0,
         "name": "管道噩梦1",
         "has_bonfire": False,
@@ -100,7 +100,7 @@ MAP_CONFIG = {
         "next": None,
         "prev": "pipe_nightmare_1",
         "down": None, # Removed connection to pipe_nightmare_3 to avoid skip
-        "bgm": "audio/bgm/city ruins.mp3",
+        "bgm": "audio/bgm/city_ruins.mp3",
         "bgm_start": 4.0,
         "name": "管道噩梦2",
         "has_bonfire": False,
@@ -111,7 +111,7 @@ MAP_CONFIG = {
         "next": "pipe_nightmare_1_2",
         "prev": None,
         "down": "pipe_nightmare_2_1",
-        "bgm": "audio/bgm/旧核.mp3",
+        "bgm": "audio/bgm/oldcore.mp3",
         "name": "管道噩梦",
         "has_bonfire": True,
         "bonfire_pos": (128 * 3, 128 * 3),
@@ -123,7 +123,7 @@ MAP_CONFIG = {
         "folder": "maps/pipe_nightmare_3", # Use Pipe 3 Assets
         "next": "pipe_nightmare_1_3",
         "prev": "pipe_nightmare_3",
-        "bgm": "audio/bgm/旧核.mp3",
+        "bgm": "audio/bgm/oldcore.mp3",
         "name": "管道大噩梦1-2",
         "has_bonfire": False,
         "show_title": False,
@@ -135,7 +135,7 @@ MAP_CONFIG = {
         "prev": None,
         "up": "pipe_nightmare_3",
         "down": "pipe_nightmare_3_1",
-        "bgm": "audio/bgm/旧核.mp3",
+        "bgm": "audio/bgm/oldcore.mp3",
         "name": "管道大噩梦2-1",
         "has_bonfire": False,
         "show_title": False,
@@ -143,11 +143,11 @@ MAP_CONFIG = {
         "open_top_rows": True
     },
     "pipe_nightmare_1_3": {
-        "folder": "maps/gray_floor", # Gray Map for Fog/Light contrast
+        "folder": "maps/pipe_nightmare_3", # Reuse pipe tiles (gray_floor was legacy, deleted)
         "next": None,
         "prev": "pipe_nightmare_1_2",
         "down": "pipe_nightmare_2_3",
-        "bgm": "audio/bgm/旧核.mp3",
+        "bgm": "audio/bgm/oldcore.mp3",
         "name": "管道大噩梦1-3",
         "has_bonfire": False,
         "show_title": False,
@@ -196,7 +196,7 @@ MAP_CONFIG = {
         "down": "pipe_nightmare_3_3",
         "prev": "pipe_nightmare_2_2",
         "up": "pipe_nightmare_1_3",
-        "bgm": "audio/bgm/旧核.mp3",
+        "bgm": "audio/bgm/oldcore.mp3",
         "name": "管道大噩梦2-3",
         "has_bonfire": False,
         "show_title": False,
@@ -207,18 +207,18 @@ MAP_CONFIG = {
         "next": "pipe_nightmare_3_2",
         "prev": None,
         "up": "pipe_nightmare_2_1",
-        "bgm": "audio/bgm/旧核.mp3",
+        "bgm": "audio/bgm/oldcore.mp3",
         "name": "管道大噩梦3-1",
         "has_bonfire": False,
         "show_title": False,
         "open_top_rows": True
     },
     "pipe_nightmare_2_2": {
-        "folder": "管道噩梦2-2",
+        "folder": "maps/pipe_nightmare_2_2",
         "next": "pipe_nightmare_2_3",
         "prev": None,
         "down": "pipe_nightmare_3_2",
-        "bgm": "audio/bgm/旧核.mp3",
+        "bgm": "audio/bgm/oldcore.mp3",
         "name": "管道大噩梦2-2",
         "has_bonfire": False,
         "show_title": False,
@@ -231,22 +231,22 @@ MAP_CONFIG = {
         ]
     },
     "pipe_nightmare_3_2": {
-        "folder": "管道噩梦3-2",
+        "folder": "maps/pipe_nightmare_3_2",
         "next": None,
         "prev": "pipe_nightmare_3_1",
         "up": "pipe_nightmare_2_2", # Connects to 2-2 (implied) or just placeholder
-        "bgm": "audio/bgm/旧核.mp3",
+        "bgm": "audio/bgm/oldcore.mp3",
         "name": "管道大噩梦3-2",
         "has_bonfire": False,
         "show_title": False,
         "open_top_rows": True
     },
     "pipe_nightmare_3_3": {
-        "folder": "管道噩梦3-3",
+        "folder": "maps/pipe_nightmare_3_3",
         "next": None,
         "prev": None,
         "up": "pipe_nightmare_2_3",
-        "bgm": "audio/bgm/旧核.mp3",
+        "bgm": "audio/bgm/oldcore.mp3",
         "name": "管道大噩梦3-3",
         "has_bonfire": False,
         "show_title": False,
@@ -256,7 +256,7 @@ MAP_CONFIG = {
         "folder": "maps/base_4",
         "next": "base_5",
         "prev": "base_3",
-        "bgm": "audio/bgm/city ruins.mp3",
+        "bgm": "audio/bgm/city_ruins.mp3",
         "bgm_start": 4.0,
         "name": "基地深层",
         "has_bonfire": False,
@@ -266,7 +266,7 @@ MAP_CONFIG = {
         "folder": "maps/base_5",
         "next": "pipe_nightmare_1",
         "prev": "base_4",
-        "bgm": "audio/bgm/city ruins.mp3",
+        "bgm": "audio/bgm/city_ruins.mp3",
         "bgm_start": 4.0,
         "name": "基地裂隙",
         "has_bonfire": False,
@@ -518,7 +518,7 @@ def main():
                  custom_w = int(128 * 1.2)
                  custom_h = int(128 * 1.1)
                  # 01 Static: is_static=True
-                 enemy = OverworldEnemy(128 * 3, 128 * 4, "assetsDB/废弃机器人_grid", "废弃机器人", is_grid=True, custom_size=(custom_w, custom_h), is_static=True)
+                 enemy = OverworldEnemy(128 * 3, 128 * 4, "characters/enemies/abandoned_robot", "废弃机器人", is_grid=True, custom_size=(custom_w, custom_h), is_static=True)
                  
                  # Enable Chase/AI
                  enemy.can_chase = True
@@ -531,10 +531,10 @@ def main():
                      "hp": 80,
                     "skills": ["escape_dust"],
                     "acts": ["观察"],
-                     "image_folder": "assetsDB/废弃机器人_grid",
+                     "image_folder": "characters/enemies/abandoned_robot",
                      "image_prefix": "废弃机器人",
                      "is_grid": True,
-                     "bgm": "audio/bgm/Hi.mp3"
+                     "bgm": "audio/bgm/hi.mp3"
                  }
                  enemies_group.add(enemy)
         
@@ -557,7 +557,7 @@ def main():
             # 2. Ghost Samurai Boss
             # Pos: Third row (Index 2), Second col (Index 1) -> 128*1, 128*2
             if "pipe_2_2_boss" not in game_state.cleared_bosses:
-                enemy = OverworldEnemy(128 * 2, 128 * 3, "assetsDB/characters/enemies/鬼武士_grid", "鬼武士", is_grid=True, custom_size=(141, 154))
+                enemy = OverworldEnemy(128 * 2, 128 * 3, "characters/enemies/samurai_ghost", "鬼武士", is_grid=True, custom_size=(141, 154))
                 enemy.battle_data = {
                     "id": "pipe_2_2_boss",
                     "boss_id": "pipe_2_2_boss",
@@ -565,7 +565,7 @@ def main():
                     "hp": 120,
                     "skills": ["dark_orb", "samurai_fire_walls", "samurai_gravity_jump"], # New Skills
                     "acts": ["看破"],
-                    "image_folder": "assetsDB/characters/enemies/鬼武士_grid",
+                    "image_folder": "characters/enemies/samurai_ghost",
                     "image_prefix": "鬼武士",
                     "is_grid": True,
                     "bgm": "audio/bgm/brutal.mp3"
@@ -596,14 +596,14 @@ def main():
             enemy_id = "snow_1_2_variable"
             if enemy_id not in game_state.temp_killed_enemies:
                 # Point to the FILE, not a folder. OverworldEnemy now handles files.
-                enemy = OverworldEnemy(128 * 4, 128 * 2, "assetsDB/新版变量.png", "variable", is_grid=True)
+                enemy = OverworldEnemy(128 * 4, 128 * 2, "characters/enemies/berserk_variable/新版变量.png", "variable", is_grid=True)
                 enemy.battle_data = {
                     "id": enemy_id,
                     "name": "变量",
                     "hp": 50,
                     "skills": ["laser", "cube", "random_particles"],
                     "acts": ["嘲讽", "观察"],
-                    "image_folder": "assetsDB/新版变量.png", # Updated path
+                    "image_folder": "characters/enemies/berserk_variable/新版变量.png", # Updated path
                     "image_prefix": "variable",
                     "is_grid": True,
                     "bgm": "audio/bgm/monster_song.mp3"
@@ -621,21 +621,21 @@ def main():
                     "description": "极不稳定的电池，可以投掷。"
                 }
                 # Scale 0.5 (1/2 size) as requested
-                tile_manager.add_collectible(128 * 2, 128 * 5, "items/battery", item_data, "audio/bgm/new items.mp3", item_id=item_id, scale=0.5)
+                tile_manager.add_collectible(128 * 2, 128 * 5, "items/battery", item_data, "audio/bgm/new_items.mp3", item_id=item_id, scale=0.5)
             
         elif map_id == "pipe_nightmare_1":
             # 暴走变量_激光 at 5,5 (Restored Asset & Corrected Pos)
             enemy_id_1 = "pipe_nightmare_1_laser"
             if enemy_id_1 not in game_state.temp_killed_enemies:
                 # Restore to previous asset
-                enemy = OverworldEnemy(128 * 5, 128 * 5, "assetsDB/暴走变量_激光_透明.png", "暴走变量_激光", is_grid=True)
+                enemy = OverworldEnemy(128 * 5, 128 * 5, "characters/enemies/variable_laser/暴走变量_激光_透明.png", "暴走变量_激光", is_grid=True)
                 enemy.battle_data = {
                     "id": enemy_id_1,
                     "name": "暴走变量_激光",
                     "hp": 80,
                     "skills": ["laser", "cube", "random_particles"],
                     "acts": ["观察"],
-                    "image_folder": "assetsDB/暴走变量_激光_透明.png",
+                    "image_folder": "characters/enemies/variable_laser/暴走变量_激光_透明.png",
                     "image_prefix": "暴走变量_激光",
                     "is_grid": True,
                     "bgm": "audio/bgm/monster_song.mp3"
@@ -646,14 +646,14 @@ def main():
             enemy_id_2 = "pipe_nightmare_1_jump"
             if enemy_id_2 not in game_state.temp_killed_enemies:
                 # Use transparent asset, NO flip correction
-                enemy = OverworldEnemy(128 * 3, 128 * 3, "assetsDB/暴走变量_跳跃 透明.png", "暴走变量_跳跃", is_grid=True)
+                enemy = OverworldEnemy(128 * 3, 128 * 3, "characters/enemies/variable_jump/暴走变量_跳跃 透明.png", "暴走变量_跳跃", is_grid=True)
                 enemy.battle_data = {
                     "id": enemy_id_2,
                     "name": "暴走变量_跳跃",
                     "hp": 80,
                     "skills": ["laser", "cube", "random_particles"],
                     "acts": ["观察"],
-                    "image_folder": "assetsDB/暴走变量_跳跃 透明.png",
+                    "image_folder": "characters/enemies/variable_jump/暴走变量_跳跃 透明.png",
                     "image_prefix": "暴走变量_跳跃",
                     "is_grid": True,
                     "bgm": "audio/bgm/monster_song.mp3"
@@ -678,9 +678,9 @@ def main():
                      "hp": 100,
                      "skills": ["noise_attack"],
                      "acts": ["聆听"],
-                     "image_folder": "assetsDB/失败之作",
+                     "image_folder": "characters/enemies/failure_boss",
                      "image_prefix": "failure",
-                     "bgm": "audio/bgm/old doll.mp3",
+                     "bgm": "audio/bgm/old_doll.mp3",
                      "bgm_start": 4.0,
                      "bgm_volume": 0.5
                  }
@@ -690,7 +690,7 @@ def main():
              if tile_manager:
                  cx = tile_manager.width // 2
                  cy = tile_manager.height - 64
-                 console = Prop(cx, cy, "assetsDB/操作台.png", scale=0.2)
+                 console = Prop(cx, cy, "objects/console/操作台.png", scale=0.2)
                  # Manually set hitbox to center point (5x5 rect)
                  console.hitbox = pygame.Rect(0, 0, 5, 5)
                  console.hitbox.center = console.rect.center
@@ -739,7 +739,7 @@ def main():
                      "skills": ["black_ranger_a", "black_ranger_b", "black_ranger_c"],
                      "acts": ["嘲讽", "观察"],
                      "boss_id": "base_5_boss",
-                     "bgm": "audio/bgm/英雄主义.mp3",
+                     "bgm": "audio/bgm/heroism.mp3",
                      "image_folder": "characters/enemies/black_ranger",
                      "image_prefix": "黑游侠",
                      "is_grid": True,
@@ -755,7 +755,7 @@ def main():
              # Map is 6x6 tiles (768x768). Middle is 384, 384.
              # Scale 0.2 (1/5th size)
              # Shrink hitbox significantly (e.g. 20px on each side)
-             monitor = Prop(384, 384, "assetsDB/显示器.png", scale=0.2, hitbox_shrink=(40, 40))
+             monitor = Prop(384, 384, "objects/props/显示器.png", scale=0.2, hitbox_shrink=(40, 40))
              props_group.add(monitor)
 
              # Abandoned Robot (废弃机器人)
@@ -766,7 +766,7 @@ def main():
              if robot_id not in game_state.temp_killed_enemies:
                  custom_w = int(128 * 1.2)
                  custom_h = int(128 * 1.1)
-                 enemy = OverworldEnemy(128 * 2, 128 * 5, "assetsDB/废弃机器人_grid", "废弃机器人", is_grid=True, custom_size=(custom_w, custom_h))
+                 enemy = OverworldEnemy(128 * 2, 128 * 5, "characters/enemies/abandoned_robot", "废弃机器人", is_grid=True, custom_size=(custom_w, custom_h))
                  
                  # Enable Chase/AI
                  enemy.can_chase = True
@@ -779,10 +779,10 @@ def main():
                      "hp": 80,
                     "skills": ["escape_dust"],
                     "acts": ["观察"],
-                     "image_folder": "assetsDB/废弃机器人_grid",
+                     "image_folder": "characters/enemies/abandoned_robot",
                      "image_prefix": "废弃机器人",
                      "is_grid": True,
-                     "bgm": "audio/bgm/Hi.mp3"
+                     "bgm": "audio/bgm/hi.mp3"
                  }
                  enemies_group.add(enemy)
 
@@ -801,7 +801,7 @@ def main():
                     "image_folder": "characters/enemies/machine_soldier",
                     "image_prefix": "jikaizhong",
                     "is_grid": True,
-                    "bgm": "audio/bgm/jikaizhong.mp3",
+                    "bgm": "audio/bgm/machine_knight.mp3",
                     "bgm_start": 17.5
                 }
                 enemies_group.add(enemy)
@@ -827,7 +827,7 @@ def main():
                     "image_folder": "characters/enemies/rebel_leader",
                     "image_prefix": "最后一版",
                     "is_grid": True,
-                    "bgm": "audio/bgm/the fish.mp3",
+                    "bgm": "audio/bgm/the_fish.mp3",
                     "anim_speed": 12
                 }
                 enemies_group.add(enemy)
@@ -1264,7 +1264,7 @@ def main():
     glitch_sound = None
     try:
         # User requested temporary replacement with calibration sound
-        glitch_path = resource_path("assetsDB/audio/sfx/故障音.mp3")
+        glitch_path = resource_path("audio/sfx/glitch.mp3")
         if not os.path.exists(glitch_path):
              root_dir = os.path.dirname(os.path.abspath(__file__))
              glitch_path = os.path.join(root_dir, "assetsDB", "audio", "sfx", "故障音.mp3")

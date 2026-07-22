@@ -112,7 +112,7 @@ class Player(pygame.sprite.Sprite):
             # Row 1 (Bottom): Up (W) - 4 Frames
             
             try:
-                ud_sheet_path = resource_path("ahead and recoil.png")
+                ud_sheet_path = resource_path("characters/player/ahead and recoil.png")
                 if os.path.exists(ud_sheet_path):
                     ud_sheet = pygame.image.load(ud_sheet_path).convert_alpha()
                     ud_w = ud_sheet.get_width()
@@ -160,14 +160,14 @@ class Player(pygame.sprite.Sprite):
                             return pygame.transform.scale(img, (width, self.base_height))
                         return None
 
-                    idle_front_img = load_single_idle("anthe_front.png")
+                    idle_front_img = load_single_idle("characters/player/anthe_front.png")
                     if idle_front_img:
                         self.animations['idle_front'] = [idle_front_img]
                     else:
                         # Fallback to first frame of down animation if file missing
                         self.animations['idle_front'] = [down_frames[0]]
                         
-                    idle_back_img = load_single_idle("anthe_back.png")
+                    idle_back_img = load_single_idle("characters/player/anthe_back.png")
                     if idle_back_img:
                         self.animations['idle_back'] = [idle_back_img]
                     else:
@@ -190,13 +190,13 @@ class Player(pygame.sprite.Sprite):
                     return pygame.transform.scale(img, (width, self.base_height))
 
                 # Up 动画
-                up_frame1 = load_and_scale("anthe_forward.png")
+                up_frame1 = load_and_scale("characters/player/anthe_forward.png")
                 self.animations['up'] = [up_frame1]
-                self.animations['idle_back'] = [load_and_scale("anthe_back.png")]
+                self.animations['idle_back'] = [load_and_scale("characters/player/anthe_back.png")]
 
                 # Down 动画
-                down_frame1 = load_and_scale("anthe_front.png")
-                down_frame2 = load_and_scale("anthe_front_walk.png")
+                down_frame1 = load_and_scale("characters/player/anthe_front.png")
+                down_frame2 = load_and_scale("characters/player/anthe_front_walk.png")
                 self.animations['down'] = [down_frame1, down_frame2]
                 self.animations['idle_front'] = [down_frame1]
 

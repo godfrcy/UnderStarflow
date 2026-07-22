@@ -17,7 +17,7 @@ PyInstaller.__main__.run([
     '--windowed',
     '--noconfirm',
     '--clean',
-    '--icon=assetsDB/icon.ico',
+    '--icon=assetsDB/ui/icon.ico',
     '--add-data=assetsDB;assetsDB',
     # Hidden imports if needed (e.g. pygame is usually auto-detected)
 ])

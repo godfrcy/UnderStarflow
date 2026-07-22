@@ -193,7 +193,7 @@ class AreaTitle:
         try:
             # User noted "Map broadcast SFX" missing. 
             # 'new map.mp3' is located in audio/bgm/ according to file list
-            self.sound = pygame.mixer.Sound(resource_path("audio/bgm/new map.mp3"))
+            self.sound = pygame.mixer.Sound(resource_path("audio/bgm/new_map.mp3"))
             self.sound.set_volume(0.5)
         except Exception as e:
             print(f"Warning: Failed to load new map sound: {e}")

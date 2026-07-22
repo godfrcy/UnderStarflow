@@ -273,14 +273,14 @@ class Bonfire(OverworldEnemy):
 
 class FailureEnemy(OverworldEnemy):
     def __init__(self, x, y, custom_size=None, is_static=False):
-        super().__init__(x, y, "assetsDB/失败之作", "", is_grid=False, custom_size=custom_size, is_static=is_static)
+        super().__init__(x, y, "characters/enemies/failure_boss", "", is_grid=False, custom_size=custom_size, is_static=is_static)
         self.can_chase = True
         self.vision_range = 50 # 接触范围
         self.chase_speed = 4.0
         self.default_facing = "left"
         
         try:
-            base_path = resource_path("assetsDB/失败之作")
+            base_path = resource_path("characters/enemies/failure_boss")
             files = []
             for i in range(1, 13):
                 fname = f"{i:02d}.png"

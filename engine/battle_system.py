@@ -273,8 +273,8 @@ class BattleManager:
         # FailureEnemy Special Sprite Logic
         if "failure_enemy" in self.enemy_data.get("id", ""):
             # Load 02.png (or 2.png) specifically
-            found_path = resource_path("assetsDB/失败之作")
-            if not os.path.exists(found_path): found_path = resource_path("assets/失败之作")
+            found_path = resource_path("characters/enemies/failure_boss")
+            if not os.path.exists(found_path): found_path = resource_path("characters/enemies/failure_boss")
             
             p = os.path.join(found_path, "02.png")
             if not os.path.exists(p): p = os.path.join(found_path, "2.png")
