@@ -126,7 +126,9 @@ class Designer:
         self.mode = "design"        # "design" | "detail"
         self.edit_idx = -1          # 当前正在细节编辑的子弹索引
         self.playing = False
+        self.paused = False     # 暂停（不重置帧）
         self.play_frame = 0
+        self.spawned_count = 0  # 已生成子弹计数（调试用）
         self.heart = [CANVAS_W//2, CANVAS_H//2]
         self.preview = []
         self.msg = ""; self.msg_timer = 0
@@ -194,7 +196,7 @@ class Designer:
                     self.input_text += c
             return  # 输入时不处理其他按键
 
-        if k == pygame.K_SPACE: self._toggle_play()
+        if k == pygame.K_SPACE: self._restart_preview()  # 空格=重播
         elif k == pygame.K_DELETE:
             if self.edit_idx >= 0:
                 del self.pattern.events[self.edit_idx]
@@ -221,7 +223,7 @@ class Designer:
                         setattr(e, kk, vv)
                 e.x, e.y = x, y
                 e.spawn_frame = sf
-                self._msg(f"已粘贴参数到子弹 #{self.edit_idx} (保留位置/帧)")
+                self._msg(f"已粘贴: #{self.edit_idx} 帧={e.spawn_frame} x={e.x} 速度={e.speed} 轨迹={e.trajectory}")
             elif self.edit_idx < 0:
                 self._msg("先选中一个子弹再粘贴")
         elif k == pygame.K_r and mod & pygame.KMOD_CTRL:
@@ -300,9 +302,15 @@ class Designer:
                 if self.edit_idx == found: self.edit_idx = -1
                 self._msg(f"删除 #{found}")
 
-        elif in_timeline and btn == 1:
-            tx = mx - TIMELINE_X
-            self.play_frame = int((tx/TIMELINE_W) * self.pattern.duration)
+        elif btn == 1:
+            # 时间线按钮区域 (timeline右边)
+            if hasattr(self, '_replay_btn_rect') and self._replay_btn_rect.collidepoint(mx, my):
+                self._restart_preview()
+            elif hasattr(self, '_pause_btn_rect') and self._pause_btn_rect.collidepoint(mx, my):
+                self._toggle_pause()
+            elif in_timeline:
+                tx = mx - TIMELINE_X
+                self.play_frame = int((tx/TIMELINE_W) * self.pattern.duration)
 
         elif in_panel and btn == 1:
             self._panel_click(mx, my)
@@ -409,16 +417,19 @@ class Designer:
     # ─── 更新 ──────────────────────────────────────────
     def _update(self):
         if self.msg_timer > 0: self.msg_timer -= 1
-        if self.playing:
-            self._spawn()           # 先生成本帧子弹
-            self._update_preview()  # 再更新已有子弹位置
-            self.play_frame += 1    # 最后帧数+1
+        if self.playing and not self.paused:
+            self._spawn()
+            self._update_preview()
+            self.play_frame += 1
             if self.play_frame >= self.pattern.duration:
-                self.playing = False; self.preview.clear()
+                self.playing = False; self.paused = False
+                self.preview.clear()
+                self._msg(f"预览结束 — 共生成了 {self.spawned_count} 个子弹")
 
     def _spawn(self):
         for e in self.pattern.events:
             if e.spawn_frame != self.play_frame: continue
+            self.spawned_count += 1
             for i in range(e.count):
                 off = (i - (e.count-1)/2) * e.spread_angle
                 rad = math.radians(e.angle + off)
@@ -470,10 +481,21 @@ class Designer:
 
         self.input_active = False; self.input_text = ""
 
-    def _toggle_play(self):
-        self.playing = not self.playing
-        if self.playing: self.play_frame = 0; self.preview.clear(); self.heart = [CANVAS_W//2, CANVAS_H//2]
-        else: self.preview.clear()
+    def _restart_preview(self):
+        """空格：从头重新播放"""
+        self.playing = True
+        self.paused = False
+        self.play_frame = 0
+        self.preview.clear()
+        self.spawned_count = 0
+        self.heart = [CANVAS_W//2, CANVAS_H//2]
+
+    def _toggle_pause(self):
+        """暂停/继续（不重置帧）"""
+        if not self.playing and not self.paused:
+            self._restart_preview()
+        else:
+            self.paused = not self.paused
 
     def _save(self):
         os.makedirs(self.patterns_dir, exist_ok=True)
@@ -578,10 +600,22 @@ class Designer:
             ex = TIMELINE_X + int((e.spawn_frame/self.pattern.duration)*TIMELINE_W)
             col = (255,220,60) if (self.mode=="detail" and i==self.edit_idx) else (100,180,255)
             pygame.draw.circle(self.screen, col, (ex, TIMELINE_Y+TIMELINE_H//2), 5)
-        t = self.fm.render(f"帧:{self.play_frame}/{self.pattern.duration} [{self.pattern.duration/60:.1f}s]", True, (200,200,200))
+        t = self.fm.render(f"帧:{self.play_frame}/{self.pattern.duration} [{self.pattern.duration/60:.1f}s] | 生成:{self.spawned_count}", True, (200,200,200))
         self.screen.blit(t, (TIMELINE_X+TIMELINE_W+12, TIMELINE_Y+2))
-        btn = self.fm.render("⏸ 暂停" if self.playing else "▶ 播放", True, (200,150,50) if self.playing else (100,200,100))
-        self.screen.blit(btn, (TIMELINE_X+TIMELINE_W+12, TIMELINE_Y+22))
+
+        # 重播按钮 (空格)
+        self._replay_btn_rect = pygame.Rect(TIMELINE_X+TIMELINE_W+10, TIMELINE_Y+20, 60, 22)
+        pygame.draw.rect(self.screen, (100, 100, 180), self._replay_btn_rect)
+        pygame.draw.rect(self.screen, (140, 140, 220), self._replay_btn_rect, 1)
+        self.screen.blit(self.fs.render("▶重播", True, (200,200,255)), (TIMELINE_X+TIMELINE_W+14, TIMELINE_Y+22))
+
+        # 暂停/继续按钮
+        self._pause_btn_rect = pygame.Rect(TIMELINE_X+TIMELINE_W+75, TIMELINE_Y+20, 60, 22)
+        pause_color = (60, 160, 60) if (self.playing and self.paused) else (160, 60, 60) if self.playing else (60, 60, 60)
+        pygame.draw.rect(self.screen, pause_color, self._pause_btn_rect)
+        pygame.draw.rect(self.screen, (100, 220, 100), self._pause_btn_rect, 1)
+        pause_label = "▶继续" if self.paused else "⏸暂停"
+        self.screen.blit(self.fs.render(pause_label, True, (200,255,200)), (TIMELINE_X+TIMELINE_W+79, TIMELINE_Y+22))
 
     def _draw_panel(self):
         x, y = PANEL_X, PANEL_Y
