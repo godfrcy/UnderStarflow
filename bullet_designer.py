@@ -135,6 +135,7 @@ class Designer:
 
         # 拖拽状态
         self.dragging_bullet = None
+        self._drag_start_pos = (0, 0)
         self.drawing_arrow = False
         self.arrow_start = (0, 0)
 
@@ -280,18 +281,18 @@ class Designer:
         if in_canvas and btn == 1:
             found = self._find(cx, cy)
             if found is not None and self.mode == "design":
-                # 设计模式：拖拽已有子弹
-                self.dragging_bullet = found
+                # 设计模式点中子弹 → 进入细节模式 (除非后续拖拽超过阈值)
                 self.edit_idx = found
+                self.dragging_bullet = found
+                self._drag_start_pos = (cx, cy)  # 记录起始位置判断是否拖拽
             elif found is None and self.mode == "design":
-                # 设计模式空位：放新子弹
+                # 放新子弹
                 e = BulletEvent(int(cx), int(cy))
                 e.spawn_frame = self.play_frame
                 self.pattern.events.append(e)
                 self.edit_idx = len(self.pattern.events) - 1
                 self._msg(f"放置子弹 #{self.edit_idx} at ({e.x},{e.y}) 帧{e.spawn_frame}")
             elif self.mode == "detail" and self.edit_idx >= 0:
-                # 细节模式：开始画向量箭头
                 self.drawing_arrow = True
                 self.arrow_start = (cx, cy)
 
@@ -314,6 +315,21 @@ class Designer:
             self._panel_click(mx, my)
 
     def _up(self, ev):
+        # 设计模式：判断单击还是拖拽
+        if self.dragging_bullet is not None and self.mode == "design":
+            idx = self.dragging_bullet
+            if hasattr(self, '_drag_start_pos'):
+                sx, sy = self._drag_start_pos
+                if idx < len(self.pattern.events):
+                    ex, ey = self.pattern.events[idx].x, self.pattern.events[idx].y
+                    dist = math.hypot(ex - sx, ey - sy)
+                    if dist < 3:
+                        # 几乎没动 → 单击 → 进入细节模式
+                        self.mode = "detail"
+                        self._msg(f"进入细节模式 — 编辑子弹 #{idx}")
+                    else:
+                        self._msg(f"移动子弹 #{idx} 到 ({ex},{ey})")
+
         if self.drawing_arrow and self.edit_idx >= 0:
             mx, my = ev.pos
             if CANVAS_X <= mx <= CANVAS_X+CANVAS_W and CANVAS_Y <= my <= CANVAS_Y+CANVAS_H:
