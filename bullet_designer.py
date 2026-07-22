@@ -131,9 +131,15 @@ class Designer:
         self.msg = ""; self.msg_timer = 0
 
         # 拖拽状态
-        self.dragging_bullet = None  # 设计模式拖拽子弹位置
-        self.drawing_arrow = False   # 细节模式正在画向量箭头
+        self.dragging_bullet = None
+        self.drawing_arrow = False
         self.arrow_start = (0, 0)
+
+        # 文本输入
+        self.input_active = False     # 是否正在输入
+        self.input_text = ""          # 当前输入文本
+        self.input_field = ""         # "speed" | "search" | "lifetime" | ""
+        self.search_result = ""       # 搜索结果提示
 
         self.patterns_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assetsDB", "patterns")
         self.canvas = pygame.Surface((CANVAS_W, CANVAS_H))
@@ -170,6 +176,22 @@ class Designer:
     def _key(self, ev):
         k = ev.key
         mod = pygame.key.get_mods()
+
+        # ── 文本输入模式 ──
+        if self.input_active:
+            if k == pygame.K_RETURN:
+                self._confirm_input()
+            elif k == pygame.K_ESCAPE:
+                self.input_active = False; self.input_text = ""
+                self._msg("取消输入")
+            elif k == pygame.K_BACKSPACE:
+                self.input_text = self.input_text[:-1]
+            else:
+                # 接受数字、小数点、负号
+                c = ev.unicode
+                if c.isdigit() or c in ".-":
+                    self.input_text += c
+            return  # 输入时不处理其他按键
 
         if k == pygame.K_SPACE: self._toggle_play()
         elif k == pygame.K_DELETE:
@@ -328,6 +350,28 @@ class Designer:
                 e.trajectory = t
                 self._msg(f"轨迹: {TRAJ_NAMES[t]} — 拖拽画布设置方向向量"); return
 
+        # ── 可点击的输入字段 (右列参数区) ──
+        # 速度输入框 (参数第3行: py = y+28 + 60)
+        speed_box = pygame.Rect(PANEL_X + 460, PANEL_Y + 28 + 80, 100, 20)
+        if speed_box.collidepoint(mx, my):
+            self.input_active = True; self.input_field = "speed"
+            self.input_text = f"{e.speed:.1f}"
+            self._msg("输入速度，Enter确认"); return
+
+        # 生命输入框
+        life_box = pygame.Rect(PANEL_X + 460, PANEL_Y + 28 + 40, 100, 20)
+        if life_box.collidepoint(mx, my):
+            self.input_active = True; self.input_field = "lifetime"
+            self.input_text = str(e.lifetime)
+            self._msg("输入存活帧数，Enter确认"); return
+
+        # ── 搜索框 ──
+        search_box = pygame.Rect(PANEL_X + 5, PANEL_Y + 38, 140, 24)
+        if search_box.collidepoint(mx, my):
+            self.input_active = True; self.input_field = "search"
+            self.input_text = ""
+            self._msg("输入子弹编号，Enter跳转"); return
+
     # ─── 更新 ──────────────────────────────────────────
     def _update(self):
         if self.msg_timer > 0: self.msg_timer -= 1
@@ -362,6 +406,33 @@ class Designer:
             b["x"] += b["vx"]; b["y"] += b["vy"]; b["life"] -= 1
             if b["life"]<=0 or b["x"]<-60 or b["x"]>CANVAS_W+60 or b["y"]<-60 or b["y"]>CANVAS_H+60:
                 self.preview.remove(b)
+
+    def _confirm_input(self):
+        """确认文本输入"""
+        try:
+            val = float(self.input_text)
+        except ValueError:
+            self._msg(f"无效输入: {self.input_text}")
+            self.input_active = False; self.input_text = ""
+            return
+
+        if self.input_field == "search":
+            # 搜索子弹编号
+            idx = int(val)
+            if 0 <= idx < len(self.pattern.events):
+                self.edit_idx = idx
+                self.mode = "detail"
+                self._msg(f"跳转到子弹 #{idx}")
+            else:
+                self._msg(f"子弹 #{idx} 不存在 (共{len(self.pattern.events)}个)")
+        elif self.input_field == "speed" and self.edit_idx >= 0:
+            self.pattern.events[self.edit_idx].speed = max(0.5, min(val, 50))
+            self._msg(f"速度设为 {val:.1f}")
+        elif self.input_field == "lifetime" and self.edit_idx >= 0:
+            self.pattern.events[self.edit_idx].lifetime = max(1, min(int(val), 999))
+            self._msg(f"生命设为 {int(val)}帧")
+
+        self.input_active = False; self.input_text = ""
 
     def _toggle_play(self):
         self.playing = not self.playing
@@ -495,6 +566,14 @@ class Designer:
         pygame.draw.rect(self.screen, (120,200,80) if self.mode=="detail" else (100,100,120), er, 2)
         self.screen.blit(self.fm.render("🔍 细节模式", True, (255,255,255) if self.mode=="detail" else (160,160,160)), (x+bw+14, y+7))
 
+        # ── 搜索框 (模式按钮下方) ──
+        search_box = pygame.Rect(x+5, y+38, 140, 24)
+        search_bg = (60, 60, 80) if self.input_active and self.input_field=="search" else (45, 45, 58)
+        pygame.draw.rect(self.screen, search_bg, search_box)
+        pygame.draw.rect(self.screen, (120, 120, 150), search_box, 1)
+        st = self.fs.render(f"🔎 {self.input_text if (self.input_active and self.input_field=='search') else '搜编号...'}", True, (200,200,200))
+        self.screen.blit(st, (x+10, y+10))
+
         if self.mode == "design":
             self._draw_design_help(x, y+45)
         else:
@@ -558,9 +637,9 @@ class Designer:
         self.screen.blit(self.fs.render("参数:", True, (170,170,180)), (px+5, py)); py += 20
 
         lines = [
-            f"出现帧: {e.spawn_frame}  [W/S调整]",
-            f"存活帧: {e.lifetime}  [E/D调整]",
-            f"速度: {e.speed:.1f} px/f  [Q/A调整]",
+            f"出现帧: {e.spawn_frame}  [W/S]",
+            f"存活帧: {e.lifetime}  [E/D] [点击输入]",
+            f"速度: {e.speed:.1f} px/f  [Q/A] [点击输入]",
             f"方向角: {e.angle:.0f}°",
             f"数量: {e.count}",
             f"散射角: {e.spread_angle}°",
@@ -568,12 +647,21 @@ class Designer:
             f"曲线频率: {e.curve_freq:.1f}",
             f"伤害: {e.damage}",
         ]
-        for line in lines:
-            self.screen.blit(self.fs.render(line, True, (200,210,200)), (px+5, py))
+        for i, line in enumerate(lines):
+            c = (200, 210, 200)
+            # 高亮可点击的行
+            if i == 1: c = (150, 220, 150)  # 存活帧
+            if i == 2: c = (150, 220, 150)  # 速度
+            self.screen.blit(self.fs.render(line, True, c), (px+5, py))
             py += 20
 
         guide = self.fs.render("画布上拖拽→设置方向向量", True, (255,200,100))
         self.screen.blit(guide, (px+5, py+5))
+
+        # 输入时的提示
+        if self.input_active:
+            inp = self.fm.render(f"输入: {self.input_text}_  (Enter确认 Esc取消)", True, (255, 255, 100))
+            self.screen.blit(inp, (px+5, py+30))
 
     def _draw_status(self):
         y = WINDOW_H-22
