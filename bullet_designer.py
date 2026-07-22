@@ -63,7 +63,7 @@ class BulletEvent:
     def __init__(self, x=200, y=20):
         self.x, self.y = x, y
         self.spawn_frame = 0
-        self.lifetime = 120
+        self.lifetime = 480    # 默认活满全场，飞出屏幕即清理
         self.btype = "normal"
         self.w, self.h = BTYPES["normal"][2]
         self.color = list(BTYPES["normal"][1])
@@ -211,68 +211,70 @@ class Designer:
     def _down(self, ev):
         mx, my = ev.pos
         btn = ev.button
-        in_canvas = CANVAS_X <= mx <= CANVAS_X + CANVAS_W and CANVAS_Y <= my <= CANVAS_Y + CANVAS_H
-        in_timeline = TIMELINE_X <= mx <= TIMELINE_X + TIMELINE_W and TIMELINE_Y <= my <= TIMELINE_Y + TIMELINE_H
-        in_panel = PANEL_X <= mx <= PANEL_X + PANEL_W
+        in_canvas = CANVAS_X <= mx <= CANVAS_X+CANVAS_W and CANVAS_Y <= my <= CANVAS_Y+CANVAS_H
+        in_timeline = TIMELINE_X <= mx <= TIMELINE_X+TIMELINE_W and TIMELINE_Y <= my <= TIMELINE_Y+TIMELINE_H
+        in_panel = PANEL_X <= mx <= PANEL_X+PANEL_W
 
         cx, cy = mx - CANVAS_X, my - CANVAS_Y
 
         if in_canvas and btn == 1:
             if self.mode == "design":
-                # 先检查是否点击了已有子弹 → 进入细节模式
+                # 检查是否点击了已有子弹 → 开始拖拽
                 found = self._find(cx, cy)
-                if found is not None and found < len(self.pattern.events):
-                    self.edit_idx = found
-                    self.mode = "detail"
-                    self._msg(f"编辑子弹 #{found} — 拖拽画箭头，右侧面板调参数")
-                    return
-                # 否则放置新子弹
-                e = BulletEvent(int(cx), int(cy))
-                e.spawn_frame = self.play_frame
-                self.pattern.events.append(e)
-                self._msg(f"放置子弹 #{len(self.pattern.events)-1} at ({e.x},{e.y})")
-            elif self.mode == "detail":
-                # 细节模式：开始画向量箭头
-                if self.edit_idx >= 0:
-                    self.drawing_arrow = True
-                    self.arrow_start = (cx, cy)
+                if found is not None:
+                    self.dragging_bullet = found
+                    self.edit_idx = found  # 选中它（但还在设计模式）
+                else:
+                    # 放新子弹
+                    e = BulletEvent(int(cx), int(cy))
+                    e.spawn_frame = self.play_frame
+                    self.pattern.events.append(e)
+                    self.edit_idx = len(self.pattern.events)-1
+                    self._msg(f"放置子弹 #{self.edit_idx} at ({e.x},{e.y}) 帧{e.spawn_frame}")
+            elif self.mode == "detail" and self.edit_idx >= 0:
+                # 开始画向量箭头
+                self.drawing_arrow = True
+                self.arrow_start = (cx, cy)
 
         elif in_canvas and btn == 3 and self.mode == "design":
-            # 右键删除
             found = self._find(cx, cy)
             if found is not None:
                 del self.pattern.events[found]
+                if self.edit_idx == found: self.edit_idx = -1
                 self._msg(f"删除 #{found}")
 
         elif in_timeline and btn == 1:
             tx = mx - TIMELINE_X
-            self.play_frame = int((tx / TIMELINE_W) * self.pattern.duration)
+            self.play_frame = int((tx/TIMELINE_W) * self.pattern.duration)
 
         elif in_panel and btn == 1:
             self._panel_click(mx, my)
 
     def _up(self, ev):
         if self.drawing_arrow and self.edit_idx >= 0:
-            # 完成向量绘制
             mx, my = ev.pos
-            if CANVAS_X <= mx <= CANVAS_X + CANVAS_W and CANVAS_Y <= my <= CANVAS_Y + CANVAS_H:
+            if CANVAS_X <= mx <= CANVAS_X+CANVAS_W and CANVAS_Y <= my <= CANVAS_Y+CANVAS_H:
                 cx, cy = mx - CANVAS_X, my - CANVAS_Y
                 e = self.pattern.events[self.edit_idx]
-                dx = cx - e.x
-                dy = cy - e.y
+                dx = cx - e.x; dy = cy - e.y
                 dist = math.hypot(dx, dy)
-                if dist > 5:  # 忽略太短的拖拽
+                if dist > 3:
                     e.angle = math.degrees(math.atan2(dy, dx))
-                    e.speed = max(0.5, dist / 10.0)  # 10px = speed 1
-                    self._msg(f"向量: 角度{e.angle:.0f}° 速度{e.speed:.1f}")
+                    e.speed = max(0.5, dist / 10.0)
+                    self._msg(f"方向{e.angle:.0f}° 速度{e.speed:.1f}")
         self.drawing_arrow = False
+        # 停止拖拽子弹
+        self.dragging_bullet = None
 
     def _move(self, ev):
         mx, my = ev.pos
-        if CANVAS_X <= mx <= CANVAS_X + CANVAS_W and CANVAS_Y <= my <= CANVAS_Y + CANVAS_H:
-            cx, cy = mx - CANVAS_X, my - CANVAS_Y
-            # 不在画向量时，如果有选中的子弹，持续更新角度预览
-            # (不做，只在 mouseup 时更新)
+        if self.dragging_bullet is not None:
+            if CANVAS_X <= mx <= CANVAS_X+CANVAS_W and CANVAS_Y <= my <= CANVAS_Y+CANVAS_H:
+                cx, cy = mx - CANVAS_X, my - CANVAS_Y
+                idx = self.dragging_bullet
+                if idx < len(self.pattern.events):
+                    self.pattern.events[idx].x = max(0, min(int(cx), CANVAS_W))
+                    self.pattern.events[idx].y = max(0, min(int(cy), CANVAS_H))
 
     def _find(self, cx, cy):
         best, best_d = None, 15
@@ -305,7 +307,7 @@ class Designer:
         e = self.pattern.events[self.edit_idx]
 
         # ── 删除按钮 ──
-        del_btn = pygame.Rect(PANEL_X + PANEL_W - 120, PANEL_Y + 4, 116, 30)
+        del_btn = pygame.Rect(PANEL_X + PANEL_W - 120, PANEL_Y + 45 - 8, 116, 28)
         if del_btn.collidepoint(mx, my):
             del self.pattern.events[self.edit_idx]
             self.edit_idx = -1; self.mode = "design"
@@ -330,10 +332,11 @@ class Designer:
     def _update(self):
         if self.msg_timer > 0: self.msg_timer -= 1
         if self.playing:
-            self.play_frame += 1
+            self._spawn()           # 先生成本帧子弹
+            self._update_preview()  # 再更新已有子弹位置
+            self.play_frame += 1    # 最后帧数+1
             if self.play_frame >= self.pattern.duration:
                 self.playing = False; self.preview.clear()
-            self._spawn(); self._update_preview()
 
     def _spawn(self):
         for e in self.pattern.events:
