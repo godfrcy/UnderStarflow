@@ -389,42 +389,22 @@ class Designer:
             self.edit_idx = -1; self.mode = "design"
             self._msg("已删除子弹"); return
 
-        # 弹幕类型 (左列)
-        btypes = list(BTYPES.keys())
-        for i, t in enumerate(btypes):
-            by = 66 + i * 25
-            if 5 <= rx <= 190 and by <= ry <= by + 22:
-                e.btype = t; e.w, e.h = BTYPES[t][2]; e.color = list(BTYPES[t][1])
-                self._msg(f"类型: {BTYPES[t][0]}"); return
+        # ── 弹幕类型 (大按钮，点一下切换下一个) ──
+        type_btn = pygame.Rect(PANEL_X + 5, PANEL_Y + 90, 280, 28)
+        if type_btn.collidepoint(mx, my):
+            btypes = list(BTYPES.keys())
+            idx = btypes.index(e.btype) if e.btype in btypes else 0
+            next_t = btypes[(idx + 1) % len(btypes)]
+            e.btype = next_t; e.w, e.h = BTYPES[next_t][2]; e.color = list(BTYPES[next_t][1])
+            self._msg(f"类型: {BTYPES[next_t][0]}"); return
 
-        # 轨迹类型 (中列)
-        for i, t in enumerate(TRAJECTORIES):
-            by = 66 + i * 25
-            if 205 <= rx <= 390 and by <= ry <= by + 22:
-                e.trajectory = t
-                self._msg(f"轨迹: {TRAJ_NAMES[t]} — 拖拽画布设置方向向量"); return
-
-        # ── 可点击的输入字段 (右列参数区) ──
-        # 存活帧 (行1, py=PANEL_Y+62+28+20 = PANEL_Y+110)
-        life_box = pygame.Rect(PANEL_X + 460, PANEL_Y + 110, 100, 20)
-        if life_box.collidepoint(mx, my):
-            self.input_active = True; self.input_field = "lifetime"
-            self.input_text = str(e.lifetime)
-            self._msg("输入存活帧数，Enter确认"); return
-
-        # 速度 (行2, py=PANEL_Y+62+28+40 = PANEL_Y+130)
-        speed_box = pygame.Rect(PANEL_X + 460, PANEL_Y + 130, 100, 20)
-        if speed_box.collidepoint(mx, my):
-            self.input_active = True; self.input_field = "speed"
-            self.input_text = f"{e.speed:.1f}"
-            self._msg("输入速度，Enter确认"); return
-
-        # ── 搜索框 ──
-        search_box = pygame.Rect(PANEL_X + 5, PANEL_Y + 36, 140, 22)
-        if search_box.collidepoint(mx, my):
-            self.input_active = True; self.input_field = "search"
-            self.input_text = ""
-            self._msg("输入子弹编号，Enter跳转"); return
+        # ── 轨迹类型 (大按钮，点一下切换下一个) ──
+        traj_btn = pygame.Rect(PANEL_X + 295, PANEL_Y + 90, 300, 28)
+        if traj_btn.collidepoint(mx, my):
+            idx2 = TRAJECTORIES.index(e.trajectory) if e.trajectory in TRAJECTORIES else 0
+            next_tr = TRAJECTORIES[(idx2 + 1) % len(TRAJECTORIES)]
+            e.trajectory = next_tr
+            self._msg(f"轨迹: {TRAJ_NAMES[next_tr]}"); return
 
     # ─── 更新 ──────────────────────────────────────────
     def _update(self):
@@ -650,7 +630,7 @@ class Designer:
         search_bg = (60, 60, 80) if self.input_active and self.input_field=="search" else (45, 45, 58)
         pygame.draw.rect(self.screen, search_bg, search_box)
         pygame.draw.rect(self.screen, (120, 120, 150), search_box, 1)
-        st = self.fs.render(f"🔎 {self.input_text if (self.input_active and self.input_field=='search') else '搜编号...'}", True, (200,200,200))
+        st = self.fs.render(f"🔎 {self.input_text if (self.input_active and self.input_field=='search') else ''}", True, (200,200,200))
         self.screen.blit(st, (x+10, y+10))
 
         if self.mode == "design":
@@ -686,29 +666,17 @@ class Designer:
         pygame.draw.rect(self.screen, (200, 60, 60), del_btn, 2)
         self.screen.blit(self.fm.render("🗑 删除", True, (255, 200, 200)), (del_btn.x + 28, del_btn.y + 3))
 
-        cy = y + 28
+        # ── 弹幕类型按钮 ──
+        type_btn = pygame.Rect(x+5, y+28, 280, 28)
+        pygame.draw.rect(self.screen, (55,55,70), type_btn)
+        pygame.draw.rect(self.screen, e.color, type_btn, 2)
+        self.screen.blit(self.fm.render(f"弹幕类型: {BTYPES[e.btype][0]}  (点击切换)", True, (220,220,220)), (x+12, y+31))
 
-        # 弹幕类型
-        self.screen.blit(self.fs.render("弹幕类型:", True, (170,170,180)), (x+5, cy)); cy += 20
-        for t in BTYPES:
-            bg = (70,50,20) if e.btype==t else (45,45,60)
-            r = pygame.Rect(x+5, cy, 185, 22)
-            pygame.draw.rect(self.screen, bg, r)
-            if e.btype==t: pygame.draw.rect(self.screen, BTYPES[t][1], r, 2)
-            self.screen.blit(self.fs.render(BTYPES[t][0], True, BTYPES[t][1]), (x+10, cy+2))
-            cy += 25
-
-        # 轨迹类型
-        tx = x+200
-        cy2 = y+28
-        self.screen.blit(self.fs.render("轨迹:", True, (170,170,180)), (tx+5, cy2)); cy2 += 20
-        for t in TRAJECTORIES:
-            bg = (70,50,20) if e.trajectory==t else (45,45,60)
-            r = pygame.Rect(tx+5, cy2, 185, 22)
-            pygame.draw.rect(self.screen, bg, r)
-            if e.trajectory==t: pygame.draw.rect(self.screen, (100,200,255), r, 2)
-            self.screen.blit(self.fs.render(f"{'→∿⌒⊕⌔'[list(TRAJECTORIES).index(t)]} {TRAJ_NAMES[t]}", True, (200,200,200)), (tx+10, cy2+2))
-            cy2 += 25
+        # ── 轨迹类型按钮 ──
+        traj_btn = pygame.Rect(x+295, y+28, 300, 28)
+        pygame.draw.rect(self.screen, (55,55,70), traj_btn)
+        pygame.draw.rect(self.screen, (100,200,255), traj_btn, 2)
+        self.screen.blit(self.fm.render(f"轨迹: {TRAJ_NAMES[e.trajectory]}  (点击切换)", True, (220,220,220)), (x+302, y+31))
 
         # 参数
         px = x+400
