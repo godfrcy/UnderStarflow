@@ -5,6 +5,7 @@ import os
 from engine.utils import resource_path, get_font
 from engine.config import *
 from engine.audio import load_bgm
+from engine.pattern_loader import PatternRunner, load_pattern
 from entities.bullets import Bullet, PlasmaBlade, LaserNetworkLine, YellowBullet
 
 class BattleDust:
@@ -142,7 +143,11 @@ class BattleManager:
         self.wind_force = [0, 0]
         self.hack_count = 0
         self.bullet_speed_multiplier = 1.0
-        
+
+        # Pattern System (JSON-based bullet patterns)
+        self.pattern_runner = PatternRunner(self)
+        self._has_pattern_skills = False
+
         # Enemy Visuals
         self.enemy_frames = []
         self.enemy_anim_index = 0
@@ -1004,7 +1009,24 @@ class BattleManager:
              # Default behavior for other enemies (if any)
              self.active_skills = self.enemy_data.get("skills", [])
              self.dialog_text = f"* {enemy_name} 发起了攻击！"
-        
+
+        # ─── Pattern Loader Integration ───
+        # Check for @pattern_name skills and load them
+        self._has_pattern_skills = False
+        for skill in list(self.active_skills):
+            if skill.startswith("@"):
+                pattern_name = skill[1:]  # Remove @ prefix
+                pattern_data = load_pattern(pattern_name)
+                if pattern_data:
+                    self.pattern_runner.load(pattern_data)
+                    self._has_pattern_skills = True
+                    # Replace @pattern skill with a placeholder for tracking
+                    self.active_skills.remove(skill)
+                    self.active_skills.append("_pattern_loaded")
+                else:
+                    print(f"Warning: Pattern '{pattern_name}' not found, skipping.")
+                    self.active_skills.remove(skill)
+
         if "thrust" in self.active_skills:
             self.wind_force = [1.5, 0] if random.random() > 0.5 else [-1.5, 0]
         else:
@@ -1193,7 +1215,11 @@ class BattleManager:
 
         # Bullet Spawning (Simplified for brevity, copying main logic)
         self.spawn_bullets()
-        
+
+        # Pattern Runner (JSON-based bullet patterns)
+        if self._has_pattern_skills:
+            self.pattern_runner.update()
+
         # Shield Mode Update
         if self.is_shield_mode:
             self.update_shield_minigame()

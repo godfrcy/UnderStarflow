@@ -1,0 +1,45 @@
+{
+  "name": "spiral_hell",
+  "duration": 480,
+  "description": "螺旋地狱：多波扇形弹幕 + 圆环弹幕交替",
+  "events": [
+    {
+      "time": 0, "interval": 60, "count": 8,
+      "btype": "spread",
+      "x": "100 + sin(frame * 0.02) * 80",
+      "y": 50,
+      "vx": 0, "vy": 0,
+      "count": 7, "spread_angle": 120,
+      "base_angle": "90 + sin(frame * 0.03) * 30",
+      "width": 8, "height": 8,
+      "color": [200, 200, 255],
+      "speed": 3,
+      "damage": 1
+    },
+    {
+      "time": 30, "interval": 60, "count": 8,
+      "btype": "spread",
+      "x": "300 - sin(frame * 0.02) * 80",
+      "y": 50,
+      "vx": 0, "vy": 0,
+      "count": 7, "spread_angle": 120,
+      "base_angle": "90 - sin(frame * 0.03) * 30",
+      "width": 8, "height": 8,
+      "color": [255, 200, 200],
+      "speed": 3,
+      "damage": 1
+    },
+    {
+      "time": 120, "interval": 120, "count": 3,
+      "btype": "circle",
+      "x": 200, "y": 150,
+      "vx": 0, "vy": 0,
+      "width": 8, "height": 8,
+      "color": [255, 220, 100],
+      "ring_count": 16,
+      "spread_angle": 15,
+      "speed": 3,
+      "damage": 1
+    }
+  ]
+}

@@ -1,0 +1,42 @@
+{
+  "name": "laser_maze",
+  "duration": 480,
+  "description": "激光迷宫：延时激光 + 追踪弹组合",
+  "events": [
+    {
+      "time": 30, "interval": 120, "count": 3,
+      "btype": "laser",
+      "x": "random(50, 350)",
+      "y": 0,
+      "vx": 0, "vy": 0,
+      "width": 30, "height": 300,
+      "color": [255, 50, 50],
+      "warning": 60,
+      "tracking": true,
+      "damage": 2
+    },
+    {
+      "time": 60, "interval": 120, "count": 3,
+      "btype": "laser",
+      "x": "random(50, 350)",
+      "y": 250,
+      "vx": 0, "vy": 0,
+      "width": 30, "height": 300,
+      "color": [255, 50, 50],
+      "warning": 60,
+      "tracking": true,
+      "damage": 2
+    },
+    {
+      "time": 20, "interval": 40, "count": 10,
+      "btype": "targeted",
+      "x": 200,
+      "y": 150,
+      "vx": 0, "vy": 0,
+      "width": 12, "height": 12,
+      "color": [255, 150, 100],
+      "speed": 3,
+      "damage": 1
+    }
+  ]
+}

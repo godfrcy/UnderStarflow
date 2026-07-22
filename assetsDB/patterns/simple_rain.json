@@ -1,0 +1,18 @@
+{
+  "name": "simple_rain",
+  "duration": 480,
+  "description": "简单的弹幕雨：从顶部随机位置落下白色子弹",
+  "events": [
+    {
+      "time": 0, "interval": 15, "count": 30,
+      "btype": "normal",
+      "x": "random(20, 380)",
+      "y": 0,
+      "vx": "sin(frame * 0.05) * 1.5",
+      "vy": 3.0,
+      "width": 10, "height": 10,
+      "color": [255, 255, 255],
+      "damage": 1
+    }
+  ]
+}
