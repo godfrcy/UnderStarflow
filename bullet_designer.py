@@ -304,15 +304,13 @@ class Designer:
                 self._msg(f"删除 #{found}")
 
         elif btn == 1:
-            # 时间线按钮区域 (timeline右边)
             if hasattr(self, '_replay_btn_rect') and self._replay_btn_rect.collidepoint(mx, my):
                 self._restart_preview()
             elif in_timeline:
                 tx = mx - TIMELINE_X
                 self.play_frame = int((tx/TIMELINE_W) * self.pattern.duration)
-
-        elif in_panel and btn == 1:
-            self._panel_click(mx, my)
+            elif in_panel:
+                self._panel_click(mx, my)
 
     def _up(self, ev):
         # 设计模式：判断单击还是拖拽
