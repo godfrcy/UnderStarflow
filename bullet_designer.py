@@ -196,7 +196,7 @@ class Designer:
                     self.input_text += c
             return  # 输入时不处理其他按键
 
-        if k == pygame.K_SPACE: self._restart_preview()  # 空格=重播
+        if k == pygame.K_SPACE: self._toggle_pause()     # 空格=播放/暂停
         elif k == pygame.K_DELETE:
             if self.edit_idx >= 0:
                 del self.pattern.events[self.edit_idx]
@@ -306,8 +306,6 @@ class Designer:
             # 时间线按钮区域 (timeline右边)
             if hasattr(self, '_replay_btn_rect') and self._replay_btn_rect.collidepoint(mx, my):
                 self._restart_preview()
-            elif hasattr(self, '_pause_btn_rect') and self._pause_btn_rect.collidepoint(mx, my):
-                self._toggle_pause()
             elif in_timeline:
                 tx = mx - TIMELINE_X
                 self.play_frame = int((tx/TIMELINE_W) * self.pattern.duration)
@@ -603,19 +601,16 @@ class Designer:
         t = self.fm.render(f"帧:{self.play_frame}/{self.pattern.duration} [{self.pattern.duration/60:.1f}s] | 生成:{self.spawned_count}", True, (200,200,200))
         self.screen.blit(t, (TIMELINE_X+TIMELINE_W+12, TIMELINE_Y+2))
 
-        # 重播按钮 (空格)
+        # 重播按钮
         self._replay_btn_rect = pygame.Rect(TIMELINE_X+TIMELINE_W+10, TIMELINE_Y+20, 60, 22)
         pygame.draw.rect(self.screen, (100, 100, 180), self._replay_btn_rect)
         pygame.draw.rect(self.screen, (140, 140, 220), self._replay_btn_rect, 1)
-        self.screen.blit(self.fs.render("▶重播", True, (200,200,255)), (TIMELINE_X+TIMELINE_W+14, TIMELINE_Y+22))
+        self.screen.blit(self.fs.render("↺重播", True, (200,200,255)), (TIMELINE_X+TIMELINE_W+14, TIMELINE_Y+22))
 
-        # 暂停/继续按钮
-        self._pause_btn_rect = pygame.Rect(TIMELINE_X+TIMELINE_W+75, TIMELINE_Y+20, 60, 22)
-        pause_color = (60, 160, 60) if (self.playing and self.paused) else (160, 60, 60) if self.playing else (60, 60, 60)
-        pygame.draw.rect(self.screen, pause_color, self._pause_btn_rect)
-        pygame.draw.rect(self.screen, (100, 220, 100), self._pause_btn_rect, 1)
-        pause_label = "▶继续" if self.paused else "⏸暂停"
-        self.screen.blit(self.fs.render(pause_label, True, (200,255,200)), (TIMELINE_X+TIMELINE_W+79, TIMELINE_Y+22))
+        # 空格指示
+        sp_label = "空格" if not self.playing else ("暂停中" if self.paused else "播放中")
+        sp_color = (200,200,200) if not self.playing else ((255,200,100) if self.paused else (100,255,100))
+        self.screen.blit(self.fs.render(sp_label, True, sp_color), (TIMELINE_X+TIMELINE_W+75, TIMELINE_Y+22))
 
     def _draw_panel(self):
         x, y = PANEL_X, PANEL_Y
