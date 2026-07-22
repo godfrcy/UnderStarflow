@@ -242,20 +242,20 @@ class Designer:
         self.input_active = False  # 点击任何地方先关闭输入
 
         if in_canvas and btn == 1:
-                # 检查是否点击了已有子弹 → 开始拖拽
-                found = self._find(cx, cy)
-                if found is not None:
-                    self.dragging_bullet = found
-                    self.edit_idx = found  # 选中它（但还在设计模式）
-                else:
-                    # 放新子弹
-                    e = BulletEvent(int(cx), int(cy))
-                    e.spawn_frame = self.play_frame
-                    self.pattern.events.append(e)
-                    self.edit_idx = len(self.pattern.events)-1
-                    self._msg(f"放置子弹 #{self.edit_idx} at ({e.x},{e.y}) 帧{e.spawn_frame}")
+            found = self._find(cx, cy)
+            if found is not None and self.mode == "design":
+                # 设计模式：拖拽已有子弹
+                self.dragging_bullet = found
+                self.edit_idx = found
+            elif found is None and self.mode == "design":
+                # 设计模式空位：放新子弹
+                e = BulletEvent(int(cx), int(cy))
+                e.spawn_frame = self.play_frame
+                self.pattern.events.append(e)
+                self.edit_idx = len(self.pattern.events) - 1
+                self._msg(f"放置子弹 #{self.edit_idx} at ({e.x},{e.y}) 帧{e.spawn_frame}")
             elif self.mode == "detail" and self.edit_idx >= 0:
-                # 开始画向量箭头
+                # 细节模式：开始画向量箭头
                 self.drawing_arrow = True
                 self.arrow_start = (cx, cy)
 
