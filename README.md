@@ -38,9 +38,9 @@ UnderStarflow/
 │   ├── maps/            # 地图瓦片集
 │   ├── objects/         # 场景物件（篝火等）
 │   └── ui/              # UI 素材（背景/肖像/图标）
-├── maps/                # [历史遗留] 旧版地图瓦片，已迁移到 assetsDB/maps/
 ├── savegame.json        # 存档文件
 └── build_exe.py         # PyInstaller 打包脚本
+└── build_game.py        #  备选打包脚本
 ```
 
 ## 游戏机制
@@ -100,10 +100,9 @@ UnderStarflow/
 
 ## 已知问题
 
-- 部分资源路径引用的是旧路径，加载时依赖 `resource_path()` 的多路径回退机制
-- `assetsDB/` 中有大量历史遗留素材未清理
-- `main.py` 过于庞大（~2300行），地图和敌人配置硬编码在主文件中
-- 中文文件名在非 Windows 系统可能出现问题
+- `main.py` 过于庞大（~2300行），地图和敌人配置硬编码在主文件中，后续需拆分
+- 部分中文文件名在非 Windows 系统可能出现编码问题
+- `build_exe.py` 路径断言未充分测试
 
 ## 致谢
 
