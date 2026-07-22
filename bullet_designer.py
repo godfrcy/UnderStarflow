@@ -207,6 +207,7 @@ class Designer:
             self.edit_idx = -1; self.mode = "design"
             self._msg("回到设计模式")
         elif k == pygame.K_s and mod & pygame.KMOD_CTRL: self._save()
+        elif k == pygame.K_e and mod & pygame.KMOD_CTRL: self._export_py()
         elif k == pygame.K_o and mod & pygame.KMOD_CTRL: self._load()
         elif k == pygame.K_c and mod & pygame.KMOD_CTRL:
             # 复制当前子弹
@@ -497,6 +498,64 @@ class Designer:
             json.dump(self.pattern.to_dict(), f, ensure_ascii=False, indent=2)
         self._msg(f"已保存: {p}")
 
+    def _export_py(self):
+        """导出为可粘贴到 battle_system.py 的 Python 技能函数"""
+        os.makedirs(self.patterns_dir, exist_ok=True)
+        name = self.pattern.name.replace(" ", "_").lower()
+        path = os.path.join(self.patterns_dir, f"{name}.py")
+
+        lines = [
+            f'# Auto-generated skill: {self.pattern.name}',
+            f'# Duration: {self.pattern.duration} frames ({self.pattern.duration/60:.1f}s)',
+            f'# Events: {len(self.pattern.events)}',
+            f'# Generated: {datetime.now().strftime("%Y-%m-%d %H:%M")}',
+            f'#',
+            f'# Usage: Add "@{name}" to enemy skills list, OR paste spawn logic below.',
+            f'',
+            f'def spawn_{name}(self):',
+            f'    """Auto-generated bullet pattern."""',
+            f'    t = self.ENEMY_TURN_DURATION - self.enemy_turn_timer',
+            f'',
+        ]
+
+        for evt in self.pattern.events:
+            angle_rad = math.radians(evt.angle)
+            vx = math.cos(angle_rad) * evt.speed
+            vy = math.sin(angle_rad) * evt.speed
+            bx, by = evt.x, evt.y
+            w, h = evt.w, evt.h
+            c = tuple(evt.color)
+
+            lines.append(f'    if t == {evt.spawn_frame}:')
+            lines.append(f'        # {BTYPES[evt.btype][0]} | {TRAJ_NAMES.get(evt.trajectory, evt.trajectory)}')
+
+            if evt.btype == "laser":
+                lines.append(f'        r = pygame.Rect(self.battle_box.left + {bx} - {w//2}, self.battle_box.top + {by}, {w}, {h})')
+                lines.append(f'        b = Bullet(r, {vx:.1f}, {vy:.1f}, {c}, "laser")')
+                lines.append(f'        b.warning_duration = {evt.warning}')
+                lines.append(f'        b.damage = {evt.damage}')
+                lines.append(f'        self.bullets.append(b)')
+            elif evt.btype == "laser_net":
+                lines.append(f'        r = pygame.Rect(self.battle_box.left + {bx} - {w//2}, self.battle_box.top + {by} - {h//2}, {w}, {h})')
+                lines.append(f'        self.bullets.append(LaserNetworkLine(r, "{evt.axis}", {evt.warning}, {evt.warning}))')
+            elif evt.btype == "plasma_blade":
+                lines.append(f'        self.bullets.append(PlasmaBlade(self.battle_box.left + {bx} - {w//2}, self.battle_box.top + {by} - {h//2}, {w}, {h}, {evt.speed:.1f}, {evt.direction}, {c}))')
+            elif evt.btype == "yellow_line":
+                lines.append(f'        r = pygame.Rect(self.battle_box.left + {bx} - {w//2}, self.battle_box.top + {by} - {h//2}, {w}, {h})')
+                lines.append(f'        self.bullets.append(YellowBullet(r, {vx:.1f}, {vy:.1f}, wait_time=30))')
+            else:
+                lines.append(f'        r = pygame.Rect(self.battle_box.left + {bx} - {w//2}, self.battle_box.top + {by} - {h//2}, {w}, {h})')
+                lines.append(f'        b = Bullet(r, {vx:.1f}, {vy:.1f}, {c}, "{evt.btype}")')
+                lines.append(f'        b.damage = {evt.damage}')
+                lines.append(f'        self.bullets.append(b)')
+            lines.append('')
+
+        lines.append(f'# End of {name}')
+
+        with open(path, "w", encoding="utf-8") as f:
+            f.write('\n'.join(lines))
+        self._msg(f"已导出 Python: {path}")
+
     def _load(self):
         os.makedirs(self.patterns_dir, exist_ok=True)
         fs = [f for f in os.listdir(self.patterns_dir) if f.endswith(".json")]
@@ -678,9 +737,9 @@ class Designer:
         pygame.draw.rect(self.screen, (100,200,255), traj_btn, 2)
         self.screen.blit(self.fm.render(f"轨迹: {TRAJ_NAMES[e.trajectory]}  (点击切换)", True, (220,220,220)), (x+302, y+31))
 
-        # 参数
-        px = x+400
-        py = y+28
+        # 参数（在类型/轨迹按钮下方）
+        px = x+5
+        py = y + 65
         self.screen.blit(self.fs.render("参数:", True, (170,170,180)), (px+5, py)); py += 20
 
         lines = [
