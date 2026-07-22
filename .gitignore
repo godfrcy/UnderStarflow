@@ -1,0 +1,26 @@
+# Python 缓存
+__pycache__/
+*.pyc
+
+# 打包产物（太大，不需要传GitHub）
+build/
+dist/
+*.spec
+*.exe
+warn-*.txt
+
+# Claude Code 配置（个人设置，不要公开）
+.claude/
+
+# 系统垃圾
+Thumbs.db
+.DS_Store
+desktop.ini
+
+# 系统垃圾
+Thumbs.db
+.DS_Store
+desktop.ini
+
+# 临时文件
+*.tmp

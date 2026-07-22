@@ -1,0 +1,45 @@
+
+# 屏幕设置
+SCREEN_WIDTH = 768
+SCREEN_HEIGHT = 768
+FPS = 60
+
+# 渲染设置
+RENDER_TILE_SIZE = 128
+PLAYER_HEIGHT = 96
+
+# 颜色定义
+COLOR_BG = (50, 50, 50)
+COLOR_GRID = (255, 0, 0)
+COLOR_SNOW = (255, 255, 255)
+COLOR_OVERLAY_BLUE = (0, 0, 139)
+COLOR_OVERLAY_RED = (139, 0, 0)
+COLOR_SHADOW = (0, 0, 0)
+COLOR_GOLD = (255, 215, 0)
+COLOR_WHITE = (255, 255, 255)
+
+# 逻辑地图 (0-35 对应 6x6 的瓦片编号)
+GAME_MAP = [[row * 6 + col for col in range(6)] for row in range(6)]
+
+# 玩家设置
+PLAYER_ANIM_SPEED = 0.15
+PLAYER_SPEED = 5
+PLAYER_SLICE_OFFSET_X = 30 # 动画切片偏移
+
+# 敌人设置
+ENEMY_ANIM_SPEED = 6
+
+# 弹幕设置
+BULLET_DEFAULT_SPEED = 5
+PLASMA_BLADE_DAMAGE = 5
+
+# 音频设置
+BGM_VOLUME = 0.5
+SFX_VOLUME = 0.5
+
+# Game States
+STATE_TITLE = "title"
+STATE_OVERWORLD = "overworld"
+STATE_BATTLE = "battle"
+STATE_BACKPACK = "backpack"
+STATE_GAMEOVER = "gameover"

@@ -1,0 +1,50 @@
+{
+    "player": {
+        "hp": 20,
+        "max_hp": 20,
+        "level": 1,
+        "exp": 25,
+        "max_exp": 100,
+        "attack": 10,
+        "x": 360,
+        "y": 287,
+        "inventory": [
+            {
+                "name": "投掷电池",
+                "type": "battery",
+                "value": 1,
+                "description": "极不稳定的电池，可以投掷。",
+                "count": 1
+            },
+            {
+                "name": "黑色游侠的动力炉",
+                "type": "key_item",
+                "description": "黑游侠的核心部件"
+            }
+        ],
+        "battery_count": 3
+    },
+    "game_state": {
+        "current_era": "Ice_Wind_Era",
+        "sync_rate": 50,
+        "show_terminal_dialog": false,
+        "activated_bonfires": [
+            "start",
+            "base_1",
+            "pipe_nightmare_3"
+        ],
+        "collected_items": [
+            "snow_1_2_battery_01"
+        ],
+        "cleared_bosses": [
+            "base_5_boss"
+        ],
+        "last_rest_map_id": "pipe_nightmare_3",
+        "last_rest_pos": [
+            384,
+            512
+        ],
+        "current_map_id": "pipe_nightmare_3",
+        "last_entry_type": "left"
+    }
+}
