@@ -304,6 +304,13 @@ class Designer:
         if self.mode != "detail" or self.edit_idx < 0: return
         e = self.pattern.events[self.edit_idx]
 
+        # ── 删除按钮 ──
+        del_btn = pygame.Rect(PANEL_X + PANEL_W - 120, PANEL_Y + 4, 116, 30)
+        if del_btn.collidepoint(mx, my):
+            del self.pattern.events[self.edit_idx]
+            self.edit_idx = -1; self.mode = "design"
+            self._msg("已删除子弹"); return
+
         # 弹幕类型 (左列)
         btypes = list(BTYPES.keys())
         for i, t in enumerate(btypes):
@@ -511,6 +518,12 @@ class Designer:
 
         e = self.pattern.events[self.edit_idx]
         self.screen.blit(self.fl.render(f"编辑子弹 #{self.edit_idx}", True, (255,255,100)), (x+10, y))
+
+        # 删除按钮
+        del_btn = pygame.Rect(x + PANEL_W - 120, y - 8, 116, 28)
+        pygame.draw.rect(self.screen, (120, 30, 30), del_btn)
+        pygame.draw.rect(self.screen, (200, 60, 60), del_btn, 2)
+        self.screen.blit(self.fm.render("🗑 删除", True, (255, 200, 200)), (del_btn.x + 28, del_btn.y + 3))
 
         cy = y + 28
 
