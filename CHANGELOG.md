@@ -1,5 +1,26 @@
 # 更新日志
 
+## [0.3.0] - 2026-07-23
+
+### 弹幕设计器 🎯
+- 新增 `bullet_designer.py` 可视化弹幕设计器
+  - 与游戏战斗区域等大（400×300）的画布 + 网格覆盖
+  - 时间线编辑系统（逐帧控制弹幕生成时机）
+  - 8 种弹幕类型：普通子弹、延时激光、方块、圆环、等离子刃、激光网、黄线、追踪弹、扇形散射
+  - 实时预览功能（方向键控制灵魂躲避）
+  - 属性面板快速编辑弹幕参数
+  - 导出 JSON 到 `assetsDB/patterns/`
+- 新增 `engine/pattern_loader.py` JSON 模式加载器
+  - 数学表达式求值（sin/cos/random）支持复杂弹幕轨迹
+  - PatternRunner 在战斗中按时间线执行弹幕生成
+- 战斗系统集成：敌人技能列表中使用 `@pattern_name` 引用 JSON 模式
+- 3 个示例弹幕：`simple_rain`、`laser_maze`、`spiral_hell`
+
+### 启动方式
+```bash
+python bullet_designer.py   # 启动弹幕设计器
+```
+
 ## [0.2.0] - 2026-07-23
 
 ### 项目整理
