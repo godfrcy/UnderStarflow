@@ -273,7 +273,7 @@ class Designer:
             tx = mx - TIMELINE_X
             self.play_frame = int((tx / TIMELINE_W) * self.pattern.duration)
 
-        elif in_panel and btn == 1 and self.mode == "detail" and self.selected_idx >= 0:
+        elif in_panel and btn == 1:
             self._panel_click(mx, my)
 
     def _mousemove(self, ev):
@@ -292,26 +292,40 @@ class Designer:
         return best
 
     def _panel_click(self, mx, my):
-        """处理细节面板的点击"""
-        evt = self.pattern.events[self.selected_idx]
+        """处理面板点击：模式切换、弹幕类型、轨迹类型"""
         ry = my - PANEL_Y
+        rx = mx - PANEL_X
 
-        # 弹幕类型按钮（第一列，8个按钮，每个高24）
+        # ── 顶部模式切换按钮 ──
+        if 5 <= ry <= 38:
+            if rx <= PANEL_W // 2:
+                self.mode = "design"
+                self.msg_show("切换到设计模式 — 点击画布放置子弹")
+            else:
+                self.mode = "detail"
+                self.msg_show("切换到细节模式 — 点击子弹编辑轨迹")
+            return
+
+        if self.mode != "detail" or self.selected_idx < 0:
+            return
+
+        evt = self.pattern.events[self.selected_idx]
+
+        # ── 弹幕类型（左列）──
         btypes = list(BTYPES.keys())
         for i, t in enumerate(btypes):
-            by = 30 + i * 25
-            if by <= ry <= by + 22:
+            by = 66 + i * 25
+            if 5 <= rx <= 190 and by <= ry <= by + 22:
                 evt.btype = t
                 evt.w, evt.h = BTYPES[t][2]
                 evt.color = list(BTYPES[t][1])
                 self.msg_show(f"类型: {BTYPES[t][0]}")
                 return
 
-        # 轨迹类型按钮（第二列）
+        # ── 轨迹类型（中列）──
         for i, t in enumerate(TRAJECTORIES):
-            by = 30 + i * 25
-            tx = 200
-            if tx <= mx - PANEL_X <= tx + 180 and by <= ry <= by + 22:
+            by = 66 + i * 25
+            if 205 <= rx <= 390 and by <= ry <= by + 22:
                 evt.trajectory = t
                 self.msg_show(f"轨迹: {t}")
                 return
@@ -444,7 +458,7 @@ class Designer:
 
         # 画布标签
         mode_label = self.fm.render(
-            "🎨 设计模式 — 点击放置子弹" if self.mode == "design" else "🔍 细节模式 — 点击选中子弹编辑",
+            "🎨 设计模式 — 点击画布放置子弹" if self.mode == "design" else "🔍 细节模式 — 点击画布选中子弹，面板编辑轨迹",
             True, (180, 180, 200))
         self.screen.blit(mode_label, (CANVAS_X, CANVAS_Y - 24))
 
@@ -475,28 +489,26 @@ class Designer:
         pygame.draw.rect(self.screen, (35, 35, 50), (x, y, PANEL_W, 280))
         pygame.draw.rect(self.screen, (80, 80, 100), (x, y, PANEL_W, 280), 1)
 
+        self._draw_mode_buttons(x, y)
+
         lines = [
+            "",
             "📋 设计模式操作",
+            "  点击画布 → 放置子弹初始位置",
+            "  点击时间线 → 跳到指定帧",
             "",
-            "点击画布 → 放置子弹初始位置",
-            "点击时间线 → 跳到指定帧",
-            "Tab → 切换到细节模式",
-            "",
-            "放置后切换到细节模式，",
-            "可以设置每个子弹的轨迹。",
+            "放置后点击「细节模式」，",
+            "可编辑每个子弹的轨迹和参数。",
             "",
             "⏎ 键位速查:",
-            "  空格 播放/暂停预览",
-            "  ↑↓←→ 预览时控制灵魂",
-            "  Delete 删除选中子弹",
-            "  Ctrl+S 保存 JSON",
-            "  Ctrl+O 加载已有模式",
-            "  Ctrl+R 重置",
+            "  空格 播放/暂停   方向键 控灵魂",
+            "  Delete 删除     Ctrl+S 保存",
+            "  Ctrl+O 加载     Ctrl+R 重置",
         ]
         for i, line in enumerate(lines):
             c = (200, 200, 200) if not line.startswith("  ") else (150, 150, 170)
             lbl = self.fs.render(line, True, c)
-            self.screen.blit(lbl, (x + 10, y + 10 + i * 20))
+            self.screen.blit(lbl, (x + 10, y + 45 + i * 20))
 
     def _draw_detail_panel(self):
         """细节模式面板：编辑选中子弹的参数"""
@@ -504,18 +516,21 @@ class Designer:
         pygame.draw.rect(self.screen, (35, 35, 50), (x, y, PANEL_W, 500))
         pygame.draw.rect(self.screen, (80, 80, 100), (x, y, PANEL_W, 500), 1)
 
+        # ── 模式切换按钮 ──
+        self._draw_mode_buttons(x, y)
+
         if self.selected_idx < 0 or self.selected_idx >= len(self.pattern.events):
-            lbl = self.fm.render("未选中子弹 — 先点击画布上的子弹", True, (150, 150, 160))
-            self.screen.blit(lbl, (x + 10, y + 10))
+            lbl = self.fm.render("未选中子弹 — 去画布上点击一个子弹", True, (150, 150, 160))
+            self.screen.blit(lbl, (x + 10, y + 50))
             return
 
         evt = self.pattern.events[self.selected_idx]
 
         # 标题
         title = self.fl.render(f"子弹 #{self.selected_idx}", True, (255, 255, 100))
-        self.screen.blit(title, (x + 10, y + 4))
+        self.screen.blit(title, (x + 10, y + 44))
 
-        cy = y + 30
+        cy = y + 66
 
         # 弹幕类型（左侧列）
         self.screen.blit(self.fs.render("─ 弹幕类型 ─", True, (170, 170, 180)), (x + 5, cy)); cy += 20
@@ -531,7 +546,7 @@ class Designer:
 
         # 轨迹类型（中间列）
         tx = x + 200
-        cy2 = y + 50
+        cy2 = y + 66
         self.screen.blit(self.fs.render("─ 轨迹 ─", True, (170, 170, 180)), (tx + 5, cy2)); cy2 += 20
         traj_labels = {
             "straight": "→ 直线", "curve_sin": "∿ 正弦波",
@@ -549,7 +564,7 @@ class Designer:
 
         # 参数区域（右侧列）
         px = x + 400
-        py = y + 50
+        py = y + 66
         self.screen.blit(self.fs.render("─ 参数 ─", True, (170, 170, 180)), (px + 5, py)); py += 22
 
         params = [
@@ -571,14 +586,32 @@ class Designer:
             self.screen.blit(lbl, (px + 5, py))
             py += 20
 
-        # 坐标
         coord = self.fs.render(f"坐标: ({evt.x}, {evt.y})  拖拽画布或方向键微调", True, (140, 140, 160))
         self.screen.blit(coord, (px + 5, py + 10))
+
+    def _draw_mode_buttons(self, x, y):
+        """绘制设计/细节模式切换按钮"""
+        bw = PANEL_W // 2 - 6
+        # 设计按钮
+        d_bg = (80, 120, 60) if self.mode == "design" else (50, 50, 65)
+        dr = pygame.Rect(x + 4, y + 4, bw, 30)
+        pygame.draw.rect(self.screen, d_bg, dr)
+        pygame.draw.rect(self.screen, (120, 200, 80) if self.mode == "design" else (100, 100, 120), dr, 2)
+        dl = self.fm.render("🎨 设计模式", True, (255, 255, 255) if self.mode == "design" else (160, 160, 160))
+        self.screen.blit(dl, (x + 10, y + 7))
+
+        # 细节按钮
+        e_bg = (80, 120, 60) if self.mode == "detail" else (50, 50, 65)
+        er = pygame.Rect(x + bw + 8, y + 4, bw, 30)
+        pygame.draw.rect(self.screen, e_bg, er)
+        pygame.draw.rect(self.screen, (120, 200, 80) if self.mode == "detail" else (100, 100, 120), er, 2)
+        el = self.fm.render("🔍 细节模式", True, (255, 255, 255) if self.mode == "detail" else (160, 160, 160))
+        self.screen.blit(el, (x + bw + 14, y + 7))
 
     def _draw_status(self):
         y = WINDOW_H - 22
         pygame.draw.line(self.screen, (60, 60, 80), (0, y), (WINDOW_W, y))
-        st = f"模式: {'设计' if self.mode == 'design' else '细节'} | 子弹数: {len(self.pattern.events)} | 时长: {self.pattern.duration}帧 ({self.pattern.duration/60:.1f}s) | Tab切换模式"
+        st = f"模式: {'设计' if self.mode == 'design' else '细节'} | 子弹数: {len(self.pattern.events)} | 时长: {self.pattern.duration}帧 ({self.pattern.duration/60:.1f}s) | 点击右上角按钮切换模式"
         lbl = self.fs.render(st, True, (130, 130, 150))
         self.screen.blit(lbl, (10, y + 3))
 
