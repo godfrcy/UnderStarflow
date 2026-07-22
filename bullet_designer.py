@@ -88,9 +88,10 @@ class BulletEvent:
         return e
 
     def arrow_end(self):
-        """返回向量箭头的终点坐标(画布坐标)"""
+        """返回向量箭头的终点坐标(画布坐标)，固定长度只表示方向"""
         rad = math.radians(self.angle)
-        return self.x + math.cos(rad) * self.speed * 10, self.y + math.sin(rad) * self.speed * 10
+        LEN = 35  # 固定长度
+        return self.x + math.cos(rad) * LEN, self.y + math.sin(rad) * LEN
 
 class Pattern:
     def __init__(self, name="new_pattern"):
@@ -204,8 +205,27 @@ class Designer:
             self._msg("回到设计模式")
         elif k == pygame.K_s and mod & pygame.KMOD_CTRL: self._save()
         elif k == pygame.K_o and mod & pygame.KMOD_CTRL: self._load()
+        elif k == pygame.K_c and mod & pygame.KMOD_CTRL:
+            # 复制当前子弹
+            if self.edit_idx >= 0:
+                self.clipboard = self.pattern.events[self.edit_idx].to_dict()
+                self._msg(f"已复制子弹 #{self.edit_idx} 的参数")
+        elif k == pygame.K_v and mod & pygame.KMOD_CTRL:
+            # 粘贴到当前子弹
+            if hasattr(self, 'clipboard') and self.clipboard and self.edit_idx >= 0:
+                e = self.pattern.events[self.edit_idx]
+                x, y = e.x, e.y  # 保留位置
+                sf = e.spawn_frame  # 保留帧
+                for kk, vv in self.clipboard.items():
+                    if kk not in ('x', 'y', 'spawn_frame'):
+                        setattr(e, kk, vv)
+                e.x, e.y = x, y
+                e.spawn_frame = sf
+                self._msg(f"已粘贴参数到子弹 #{self.edit_idx} (保留位置/帧)")
+            elif self.edit_idx < 0:
+                self._msg("先选中一个子弹再粘贴")
         elif k == pygame.K_r and mod & pygame.KMOD_CTRL:
-            self.pattern = Pattern(); self.edit_idx = -1; self.mode = "design"
+            self.pattern = Pattern(); self.edit_idx = -1; self.mode = "design"; self.clipboard = None
             self._msg("重置")
 
         # 预览时控制灵魂
@@ -219,16 +239,30 @@ class Designer:
             h[0] = max(0, min(h[0], CANVAS_W))
             h[1] = max(0, min(h[1], CANVAS_H))
 
-        # 细节模式微调
+        # 细节模式快捷键
         if self.mode == "detail" and self.edit_idx >= 0:
             e = self.pattern.events[self.edit_idx]
             s = 5 if mod & pygame.KMOD_SHIFT else 1
-            if k == pygame.K_w:     e.spawn_frame = max(0, e.spawn_frame - s*5)
-            if k == pygame.K_s:     e.spawn_frame = min(MAX_DURATION, e.spawn_frame + s*5)
-            if k == pygame.K_e:     e.lifetime = max(1, e.lifetime - s*10)
-            if k == pygame.K_d:     e.lifetime = min(MAX_DURATION, e.lifetime + s*10)
-            if k == pygame.K_q:     e.speed = max(0.5, e.speed - 0.5)
-            if k == pygame.K_a:     e.speed = min(20, e.speed + 0.5)
+            # 数字键激活输入
+            if k == pygame.K_1:
+                self.input_active = True; self.input_field = "spawn_frame"
+                self.input_text = str(e.spawn_frame)
+                self._msg("输入出现帧，Enter确认")
+            elif k == pygame.K_2:
+                self.input_active = True; self.input_field = "lifetime"
+                self.input_text = str(e.lifetime)
+                self._msg("输入存活帧，Enter确认")
+            elif k == pygame.K_3:
+                self.input_active = True; self.input_field = "speed"
+                self.input_text = f"{e.speed:.1f}"
+                self._msg("输入速度，Enter确认")
+            # 键盘微调（备用）
+            elif k == pygame.K_w: e.spawn_frame = max(0, e.spawn_frame - s*5)
+            elif k == pygame.K_s: e.spawn_frame = min(MAX_DURATION, e.spawn_frame + s*5)
+            elif k == pygame.K_e: e.lifetime = max(1, e.lifetime - s*10)
+            elif k == pygame.K_d: e.lifetime = min(MAX_DURATION, e.lifetime + s*10)
+            elif k == pygame.K_q: e.speed = max(0.5, e.speed - 0.5)
+            elif k == pygame.K_a: e.speed = min(20, e.speed + 0.5)
 
     def _down(self, ev):
         mx, my = ev.pos
@@ -283,8 +317,7 @@ class Designer:
                 dist = math.hypot(dx, dy)
                 if dist > 3:
                     e.angle = math.degrees(math.atan2(dy, dx))
-                    e.speed = max(0.5, dist / 10.0)
-                    self._msg(f"方向{e.angle:.0f}° 速度{e.speed:.1f}")
+                    self._msg(f"方向设为 {e.angle:.0f}°")
         self.drawing_arrow = False
         # 停止拖拽子弹
         self.dragging_bullet = None
@@ -418,7 +451,6 @@ class Designer:
             return
 
         if self.input_field == "search":
-            # 搜索子弹编号
             idx = int(val)
             if 0 <= idx < len(self.pattern.events):
                 self.edit_idx = idx
@@ -426,6 +458,9 @@ class Designer:
                 self._msg(f"跳转到子弹 #{idx}")
             else:
                 self._msg(f"子弹 #{idx} 不存在 (共{len(self.pattern.events)}个)")
+        elif self.input_field == "spawn_frame" and self.edit_idx >= 0:
+            self.pattern.events[self.edit_idx].spawn_frame = max(0, min(int(val), MAX_DURATION))
+            self._msg(f"出现帧设为 {int(val)}")
         elif self.input_field == "speed" and self.edit_idx >= 0:
             self.pattern.events[self.edit_idx].speed = max(0.5, min(val, 50))
             self._msg(f"速度设为 {val:.1f}")
@@ -638,15 +673,15 @@ class Designer:
         self.screen.blit(self.fs.render("参数:", True, (170,170,180)), (px+5, py)); py += 20
 
         lines = [
-            f"出现帧: {e.spawn_frame}  [W/S]",
-            f"存活帧: {e.lifetime}  [E/D] [点击输入]",
-            f"速度: {e.speed:.1f} px/f  [Q/A] [点击输入]",
-            f"方向角: {e.angle:.0f}°",
-            f"数量: {e.count}",
-            f"散射角: {e.spread_angle}°",
-            f"曲线振幅: {e.curve_amp}",
-            f"曲线频率: {e.curve_freq:.1f}",
-            f"伤害: {e.damage}",
+            f"1.出现帧: {e.spawn_frame}  [W/S微调]",
+            f"2.存活帧: {e.lifetime}  [E/D微调]",
+            f"3.速度:   {e.speed:.1f} px/f  [Q/A微调]",
+            f"  方向角: {e.angle:.0f}° (画布拖拽)",
+            f"  数量: {e.count}",
+            f"  散射角: {e.spread_angle}°",
+            f"  曲线振幅: {e.curve_amp}",
+            f"  曲线频率: {e.curve_freq:.1f}",
+            f"  伤害: {e.damage}",
         ]
         for i, line in enumerate(lines):
             c = (200, 210, 200)
