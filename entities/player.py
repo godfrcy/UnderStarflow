@@ -112,7 +112,7 @@ class Player(pygame.sprite.Sprite):
             # Row 1 (Bottom): Up (W) - 4 Frames
             
             try:
-                ud_sheet_path = resource_path("characters/player/ahead and recoil.png")
+                ud_sheet_path = resource_path("characters/player/ahead_and_recoil.png")
                 if os.path.exists(ud_sheet_path):
                     ud_sheet = pygame.image.load(ud_sheet_path).convert_alpha()
                     ud_w = ud_sheet.get_width()

@@ -518,7 +518,7 @@ def main():
                  custom_w = int(128 * 1.2)
                  custom_h = int(128 * 1.1)
                  # 01 Static: is_static=True
-                 enemy = OverworldEnemy(128 * 3, 128 * 4, "characters/enemies/abandoned_robot", "废弃机器人", is_grid=True, custom_size=(custom_w, custom_h), is_static=True)
+                 enemy = OverworldEnemy(128 * 3, 128 * 4, "characters/enemies/abandoned_robot", "abandoned_robot", is_grid=True, custom_size=(custom_w, custom_h), is_static=True)
                  
                  # Enable Chase/AI
                  enemy.can_chase = True
@@ -532,7 +532,7 @@ def main():
                     "skills": ["escape_dust"],
                     "acts": ["观察"],
                      "image_folder": "characters/enemies/abandoned_robot",
-                     "image_prefix": "废弃机器人",
+                     "image_prefix": "abandoned_robot",
                      "is_grid": True,
                      "bgm": "audio/bgm/hi.mp3"
                  }
@@ -557,7 +557,7 @@ def main():
             # 2. Ghost Samurai Boss
             # Pos: Third row (Index 2), Second col (Index 1) -> 128*1, 128*2
             if "pipe_2_2_boss" not in game_state.cleared_bosses:
-                enemy = OverworldEnemy(128 * 2, 128 * 3, "characters/enemies/samurai_ghost", "鬼武士", is_grid=True, custom_size=(141, 154))
+                enemy = OverworldEnemy(128 * 2, 128 * 3, "characters/enemies/samurai_ghost", "samurai_ghost", is_grid=True, custom_size=(141, 154))
                 enemy.battle_data = {
                     "id": "pipe_2_2_boss",
                     "boss_id": "pipe_2_2_boss",
@@ -566,7 +566,7 @@ def main():
                     "skills": ["dark_orb", "samurai_fire_walls", "samurai_gravity_jump"], # New Skills
                     "acts": ["看破"],
                     "image_folder": "characters/enemies/samurai_ghost",
-                    "image_prefix": "鬼武士",
+                    "image_prefix": "samurai_ghost",
                     "is_grid": True,
                     "bgm": "audio/bgm/brutal.mp3"
                 }
@@ -596,7 +596,7 @@ def main():
             enemy_id = "snow_1_2_variable"
             if enemy_id not in game_state.temp_killed_enemies:
                 # Point to the FILE, not a folder. OverworldEnemy now handles files.
-                enemy = OverworldEnemy(128 * 4, 128 * 2, "characters/enemies/berserk_variable/新版变量.png", "variable", is_grid=True)
+                enemy = OverworldEnemy(128 * 4, 128 * 2, "characters/enemies/berserk_variable/berserk_variable.png", "variable", is_grid=True)
                 enemy.battle_data = {
                     "id": enemy_id,
                     "name": "变量",
@@ -628,15 +628,15 @@ def main():
             enemy_id_1 = "pipe_nightmare_1_laser"
             if enemy_id_1 not in game_state.temp_killed_enemies:
                 # Restore to previous asset
-                enemy = OverworldEnemy(128 * 5, 128 * 5, "characters/enemies/variable_laser/暴走变量_激光_透明.png", "暴走变量_激光", is_grid=True)
+                enemy = OverworldEnemy(128 * 5, 128 * 5, "characters/enemies/variable_laser/variable_laser_透明.png", "variable_laser", is_grid=True)
                 enemy.battle_data = {
                     "id": enemy_id_1,
                     "name": "暴走变量_激光",
                     "hp": 80,
                     "skills": ["laser", "cube", "random_particles"],
                     "acts": ["观察"],
-                    "image_folder": "characters/enemies/variable_laser/暴走变量_激光_透明.png",
-                    "image_prefix": "暴走变量_激光",
+                    "image_folder": "characters/enemies/variable_laser/variable_laser_透明.png",
+                    "image_prefix": "variable_laser",
                     "is_grid": True,
                     "bgm": "audio/bgm/monster_song.mp3"
                 }
@@ -646,15 +646,15 @@ def main():
             enemy_id_2 = "pipe_nightmare_1_jump"
             if enemy_id_2 not in game_state.temp_killed_enemies:
                 # Use transparent asset, NO flip correction
-                enemy = OverworldEnemy(128 * 3, 128 * 3, "characters/enemies/variable_jump/暴走变量_跳跃 透明.png", "暴走变量_跳跃", is_grid=True)
+                enemy = OverworldEnemy(128 * 3, 128 * 3, "characters/enemies/variable_jump/variable_jump透明.png", "variable_jump", is_grid=True)
                 enemy.battle_data = {
                     "id": enemy_id_2,
                     "name": "暴走变量_跳跃",
                     "hp": 80,
                     "skills": ["laser", "cube", "random_particles"],
                     "acts": ["观察"],
-                    "image_folder": "characters/enemies/variable_jump/暴走变量_跳跃 透明.png",
-                    "image_prefix": "暴走变量_跳跃",
+                    "image_folder": "characters/enemies/variable_jump/variable_jump透明.png",
+                    "image_prefix": "variable_jump",
                     "is_grid": True,
                     "bgm": "audio/bgm/monster_song.mp3"
                 }
@@ -690,7 +690,7 @@ def main():
              if tile_manager:
                  cx = tile_manager.width // 2
                  cy = tile_manager.height - 64
-                 console = Prop(cx, cy, "objects/console/操作台.png", scale=0.2)
+                 console = Prop(cx, cy, "objects/console/console.png", scale=0.2)
                  # Manually set hitbox to center point (5x5 rect)
                  console.hitbox = pygame.Rect(0, 0, 5, 5)
                  console.hitbox.center = console.rect.center
@@ -702,7 +702,7 @@ def main():
                  # Black Ranger EX (Grid)
                  # Position: Inside Fog Gate (Bottom-Right)
                  # Using grid assets from assetsDB/黑游侠_grid
-                 enemy = OverworldEnemy(0, 0, "characters/enemies/black_ranger", "黑游侠", is_grid=True)
+                 enemy = OverworldEnemy(0, 0, "characters/enemies/black_ranger", "black_ranger", is_grid=True)
                  
                  # Flip all frames (User wants facing Left, defaults to Right)
                  if enemy.frames:
@@ -741,7 +741,7 @@ def main():
                      "boss_id": "base_5_boss",
                      "bgm": "audio/bgm/heroism.mp3",
                      "image_folder": "characters/enemies/black_ranger",
-                     "image_prefix": "黑游侠",
+                     "image_prefix": "black_ranger",
                      "is_grid": True,
                      "flip": True
                  }
@@ -755,7 +755,7 @@ def main():
              # Map is 6x6 tiles (768x768). Middle is 384, 384.
              # Scale 0.2 (1/5th size)
              # Shrink hitbox significantly (e.g. 20px on each side)
-             monitor = Prop(384, 384, "objects/props/显示器.png", scale=0.2, hitbox_shrink=(40, 40))
+             monitor = Prop(384, 384, "objects/props/monitor.png", scale=0.2, hitbox_shrink=(40, 40))
              props_group.add(monitor)
 
              # Abandoned Robot (废弃机器人)
@@ -766,7 +766,7 @@ def main():
              if robot_id not in game_state.temp_killed_enemies:
                  custom_w = int(128 * 1.2)
                  custom_h = int(128 * 1.1)
-                 enemy = OverworldEnemy(128 * 2, 128 * 5, "characters/enemies/abandoned_robot", "废弃机器人", is_grid=True, custom_size=(custom_w, custom_h))
+                 enemy = OverworldEnemy(128 * 2, 128 * 5, "characters/enemies/abandoned_robot", "abandoned_robot", is_grid=True, custom_size=(custom_w, custom_h))
                  
                  # Enable Chase/AI
                  enemy.can_chase = True
@@ -780,7 +780,7 @@ def main():
                     "skills": ["escape_dust"],
                     "acts": ["观察"],
                      "image_folder": "characters/enemies/abandoned_robot",
-                     "image_prefix": "废弃机器人",
+                     "image_prefix": "abandoned_robot",
                      "is_grid": True,
                      "bgm": "audio/bgm/hi.mp3"
                  }
@@ -809,10 +809,10 @@ def main():
         elif map_id == "base_3":
             # Admin (Rebel Leader / 义军)
             # Center of map (approx 128*3, 128*3)
-            # Use "最后一版" assets
+            # Use rebel_leader assets
             enemy_id = "base_3_admin"
             if enemy_id not in game_state.temp_killed_enemies:
-                enemy = OverworldEnemy(128 * 3, 128 * 3, "characters/enemies/rebel_leader", "最后一版", is_grid=True)
+                enemy = OverworldEnemy(128 * 3, 128 * 3, "characters/enemies/rebel_leader", "rebel_leader", is_grid=True)
                 enemy.ANIM_SPEED = 12 # Slow down animation
                 # Rebel Exclusive: Enable Chase Logic
                 enemy.can_chase = True
@@ -825,7 +825,7 @@ def main():
                     "skills": ["admin_shield", "admin_laser_cut", "admin_particle_sphere"],
                     "acts": ["嘲讽", "观察"],
                     "image_folder": "characters/enemies/rebel_leader",
-                    "image_prefix": "最后一版",
+                    "image_prefix": "rebel_leader",
                     "is_grid": True,
                     "bgm": "audio/bgm/the_fish.mp3",
                     "anim_speed": 12

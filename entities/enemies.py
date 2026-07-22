@@ -90,7 +90,7 @@ class OverworldEnemy(pygame.sprite.Sprite):
                                 target_w, target_h = RENDER_TILE_SIZE, RENDER_TILE_SIZE
                                 if self.custom_size:
                                     target_w, target_h = self.custom_size
-                                elif "最后一版" in file_prefix:
+                                elif "rebel_leader" in file_prefix:
                                      target_w, target_h = 94, 140
                                 
                                 img = pygame.transform.scale(img, (target_w, target_h))
@@ -121,7 +121,7 @@ class OverworldEnemy(pygame.sprite.Sprite):
                             
                             if self.custom_size:
                                 target_w, target_h = self.custom_size
-                            elif "最后一版" in file_prefix:
+                            elif "rebel_leader" in file_prefix:
                                 target_w = 94
                                 target_h = 140
                             

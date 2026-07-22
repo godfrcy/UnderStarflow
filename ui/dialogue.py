@@ -11,9 +11,9 @@ class DialogueSystem:
         
         # Load Assets
         try:
-            self.portrait_img = pygame.image.load(resource_path("ui/portraits/阿尔忒半身像.png")).convert_alpha()
+            self.portrait_img = pygame.image.load(resource_path("ui/portraits/anthe_portrait.png")).convert_alpha()
             # self.box_img is deprecated as per user request
-            self.frame_img = pygame.image.load(resource_path("ui/portraits/头像框.png")).convert_alpha()
+            self.frame_img = pygame.image.load(resource_path("ui/portraits/portrait_frame.png")).convert_alpha()
         except Exception as e:
             print(f"Error loading dialogue assets: {e}")
             # Fallbacks
