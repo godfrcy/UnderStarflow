@@ -197,21 +197,26 @@ class ConfirmDialog:
         return result
 
 class BonfireMenu:
-    def __init__(self, screen):
+    def __init__(self, screen, show_analyze=False):
         self.screen = screen
         self.width = screen.get_width()
         self.height = screen.get_height()
-        self.options = ["存档", "传送", "离开"]
+        self.show_analyze = show_analyze
+        self.options = ["存档", "传送", "解析", "离开"] if show_analyze else ["存档", "传送", "离开"]
         self.selected_index = 0
         try:
             self.font = get_font(28)
         except:
             self.font = pygame.font.Font(None, 28)
             
-    def run(self, bg_surface):
+    def run(self, bg_surface, show_analyze=None):
+        if show_analyze is not None:
+            self.show_analyze = show_analyze
+            self.options = ["存档", "传送", "解析", "离开"] if show_analyze else ["存档", "传送", "离开"]
+        self.selected_index = 0
         clock = pygame.time.Clock()
         running = True
-        
+
         while running:
             # Event Handling
             for event in pygame.event.get():
@@ -224,11 +229,14 @@ class BonfireMenu:
                     elif event.key == pygame.K_DOWN or event.key == pygame.K_s:
                         self.selected_index = (self.selected_index + 1) % len(self.options)
                     elif event.key == pygame.K_RETURN or event.key == pygame.K_SPACE or event.key == pygame.K_z:
-                        if self.options[self.selected_index] == "存档":
+                        opt = self.options[self.selected_index]
+                        if opt == "存档":
                             return "save"
-                        elif self.options[self.selected_index] == "传送":
+                        elif opt == "传送":
                             return "teleport"
-                        elif self.options[self.selected_index] == "离开":
+                        elif opt == "解析":
+                            return "analyze"
+                        elif opt == "离开":
                             return "leave"
                     elif event.key == pygame.K_ESCAPE or event.key == pygame.K_x:
                         return "leave"
@@ -838,8 +846,155 @@ class StatsMenu:
             exp_text = f"经验: {exp} / {max_exp}"
             exp_surf = self.font.render(exp_text, True, (255, 255, 255))
             self.screen.blit(exp_surf, exp_surf.get_rect(center=(cx, exp_bar_y + 35)))
-            
+
             pygame.display.flip()
             clock.tick(60)
         return "resume"
+
+class AnalyzeMenu:
+    """解析菜单：筛选带特殊 tag（boss 战利品）的物品，选中后进入强化二选一。"""
+    def __init__(self, screen):
+        self.screen = screen
+        self.width = screen.get_width()
+        self.height = screen.get_height()
+        self.selected_index = 0
+        self.items = []  # 带特殊 tag 的物品 dict 列表
+        self.font = get_font(28)
+
+    def _build_items(self, player):
+        self.items = [item for item in getattr(player, 'inventory', [])
+                      if isinstance(item, dict) and item.get("tag") == "boss_trophy"]
+
+    def run(self, player, bg_snapshot):
+        self._build_items(player)
+        self.selected_index = 0
+        clock = pygame.time.Clock()
+        running = True
+
+        while running:
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    return None
+                if event.type == pygame.KEYDOWN:
+                    if event.key in (pygame.K_LEFT, pygame.K_a):
+                        self.selected_index = (self.selected_index - 1) % max(1, len(self.items))
+                    elif event.key in (pygame.K_RIGHT, pygame.K_d):
+                        self.selected_index = (self.selected_index + 1) % max(1, len(self.items))
+                    elif event.key in (pygame.K_UP, pygame.K_w):
+                        self.selected_index = (self.selected_index - 2) % max(1, len(self.items))
+                    elif event.key in (pygame.K_DOWN, pygame.K_s):
+                        self.selected_index = (self.selected_index + 2) % max(1, len(self.items))
+                    elif event.key in (pygame.K_ESCAPE, pygame.K_x, pygame.K_b):
+                        return None
+                    elif event.key in (pygame.K_RETURN, pygame.K_SPACE, pygame.K_z):
+                        if self.items:
+                            return self.items[self.selected_index]
+
+            self.draw(bg_snapshot)
+            pygame.display.flip()
+            clock.tick(60)
+
+    def draw(self, bg_surface):
+        self.screen.fill((0, 0, 0))
+        if bg_surface:
+            self.screen.blit(bg_surface, (0, 0))
+
+        box_width = int(self.width * 0.8)
+        box_height = int(self.height * 0.6)
+        box_x = (self.width - box_width) // 2
+        box_y = (self.height - box_height) // 2
+
+        pygame.draw.rect(self.screen, (0, 0, 0), (box_x, box_y, box_width, box_height))
+        pygame.draw.rect(self.screen, (255, 255, 255), (box_x, box_y, box_width, box_height), 4)
+
+        title = self.font.render("解析战利品", True, (255, 215, 0))
+        self.screen.blit(title, title.get_rect(center=(self.width // 2, box_y + 40)))
+
+        if not self.items:
+            text = self.font.render("(没有可解析的战利品)", True, (150, 150, 150))
+            self.screen.blit(text, text.get_rect(center=(self.width // 2, self.height // 2)))
+            return
+
+        start_x = box_x + 60
+        start_y = box_y + 90
+        col_spacing = box_width // 2
+        row_spacing = 60
+
+        for i, item in enumerate(self.items):
+            row = i // 2
+            col = i % 2
+            name = item.get("name", "未知物品")
+            color = (255, 215, 0) if i == self.selected_index else (255, 255, 255)
+            text_surf = self.font.render(name, True, color)
+            x = start_x + col * col_spacing
+            y = start_y + row * row_spacing
+            self.screen.blit(text_surf, (x, y))
+
+            if i == self.selected_index:
+                marker_x = x - 20
+                marker_y = y + text_surf.get_height() // 2
+                p1 = (marker_x, marker_y - 6)
+                p2 = (marker_x, marker_y + 6)
+                p3 = (marker_x + 10, marker_y)
+                pygame.draw.polygon(self.screen, (255, 215, 0), [p1, p2, p3])
+
+class StrengthenMenu:
+    """强化二选一菜单：选项 A / B（具体内容后续填充）。"""
+    def __init__(self, screen):
+        self.screen = screen
+        self.width = screen.get_width()
+        self.height = screen.get_height()
+        self.selected_index = 0
+        self.font = get_font(28)
+
+    def run(self, item, bg_snapshot):
+        item_name = item.get("name", "未知物品") if item else "未知物品"
+        self.selected_index = 0
+        clock = pygame.time.Clock()
+        running = True
+
+        while running:
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    return None
+                if event.type == pygame.KEYDOWN:
+                    if event.key in (pygame.K_LEFT, pygame.K_a, pygame.K_UP, pygame.K_w):
+                        self.selected_index = (self.selected_index - 1) % 2
+                    elif event.key in (pygame.K_RIGHT, pygame.K_d, pygame.K_DOWN, pygame.K_s):
+                        self.selected_index = (self.selected_index + 1) % 2
+                    elif event.key in (pygame.K_ESCAPE, pygame.K_x):
+                        return None
+                    elif event.key in (pygame.K_RETURN, pygame.K_SPACE, pygame.K_z):
+                        return "A" if self.selected_index == 0 else "B"
+
+            self.draw(item_name, bg_snapshot)
+            pygame.display.flip()
+            clock.tick(60)
+
+    def draw(self, item_name, bg_surface):
+        self.screen.fill((0, 0, 0))
+        if bg_surface:
+            self.screen.blit(bg_surface, (0, 0))
+
+        box_width, box_height = 400, 260
+        box_x = (self.width - box_width) // 2
+        box_y = (self.height - box_height) // 2
+
+        pygame.draw.rect(self.screen, (0, 0, 0), (box_x, box_y, box_width, box_height))
+        pygame.draw.rect(self.screen, (255, 255, 255), (box_x, box_y, box_width, box_height), 4)
+
+        title = self.font.render(f"解析：{item_name}", True, (255, 215, 0))
+        self.screen.blit(title, title.get_rect(center=(self.width // 2, box_y + 50)))
+
+        options = ["强化 A", "强化 B"]
+        opt_y = box_y + 130
+        opt_spacing = 150
+        start_x = self.width // 2 - opt_spacing // 2
+
+        for i, opt in enumerate(options):
+            color = (255, 215, 0) if i == self.selected_index else (200, 200, 200)
+            prefix = "> " if i == self.selected_index else ""
+            opt_surf = self.font.render(prefix + opt, True, color)
+            pos_x = start_x if i == 0 else start_x + opt_spacing
+            self.screen.blit(opt_surf, opt_surf.get_rect(center=(pos_x, opt_y)))
 

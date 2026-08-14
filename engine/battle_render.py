@@ -32,7 +32,7 @@ class RenderMixin:
         # if inverted, copy screen to surface, flip, and blit back.
         
         self.screen.fill((0, 0, 0))
-        
+
         # Draw Enemy
         enemy_draw_pos = self.enemy_rect.move(self.shake_offset)
         self.screen.blit(self.enemy_img, enemy_draw_pos)
@@ -210,6 +210,34 @@ class RenderMixin:
              # Flip (180 degrees = flip x and y)
              flipped = pygame.transform.flip(screen_copy, True, True)
              self.screen.blit(flipped, (0, 0))
+
+        # 「明日指针」金瞳故障闪屏（EMP 瓦解失败之作后触发，一次性 ~1.5s）
+        if self.anthe_glitch_timer > 0:
+            self.anthe_glitch_timer -= 1
+            t = self.anthe_glitch_timer
+            if t > 75:
+                a = int(255 * (90 - t) / 15)   # 淡入
+            elif t < 30:
+                a = int(255 * t / 30)          # 淡出
+            else:
+                a = 255
+            a = max(0, min(255, a))
+
+            # 横向噪点条纹
+            glitch_surf = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+            for _ in range(18):
+                h = random.randint(2, 12)
+                y = random.randint(0, SCREEN_HEIGHT - h)
+                shade = random.randint(0, 40)
+                pygame.draw.rect(glitch_surf, (shade, shade, shade, random.randint(60, 200)), (0, y, SCREEN_WIDTH, h))
+            self.screen.blit(glitch_surf, (0, 0))
+
+            # 浮动文字「明日指针」
+            word = get_font(64).render("明日指针", True, (255, 200, 80))
+            word.set_alpha(a)
+            wobble = int(8 * math.sin(t / 6.0))
+            wrect = word.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + wobble))
+            self.screen.blit(word, wrect)
 
     def draw_ui(self, box_draw_rect):
         status_y = 620

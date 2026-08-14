@@ -6,18 +6,34 @@ from engine.config import *
 
 
 class MenuMixin:
+    def mercy_available(self):
+        """宽恕是否可用：二周目（击败过最终boss）或本周目已解锁彩蛋。"""
+        if self.game_state is None:
+            return False
+        return bool(getattr(self.game_state, "final_boss_defeated", False)) or \
+               bool(getattr(self.game_state, "mercy_unlocked", False))
+
     def confirm_menu_selection(self):
         if self.selected_btn_idx == 0: # FIGHT
+            self.silent_streak = 0
             self.start_qte()
         elif self.selected_btn_idx == 1: # ACT
             self.current_phase = self.PHASE_ACT_SELECT
             self.act_selection_idx = 0
         elif self.selected_btn_idx == 2: # ITEM
+            self.silent_streak = 0
             self.current_phase = self.PHASE_ITEM_SELECT
             self.item_selection_idx = 0
         elif self.selected_btn_idx == 3: # MERCY
-            self.current_phase = self.PHASE_MERCY_SELECT
-            self.mercy_selection_idx = 0
+            if self.mercy_available():
+                self.current_phase = self.PHASE_MERCY_SELECT
+                self.mercy_selection_idx = 0
+            else:
+                # 一周目未解锁：宽恕不可用
+                self.action_text = "* 宽恕……现在还不是时候。"
+                self.current_phase = self.PHASE_PLAYER_ANIM
+                self.next_phase_after_anim = self.PHASE_MENU
+                self.action_timer = 60
 
     def start_qte(self):
         self.current_phase = self.PHASE_QTE
@@ -85,7 +101,11 @@ class MenuMixin:
         self.action_timer = 60
 
     def get_act_options(self):
-        return ["取消", "骇入", "逃跑"]
+        options = ["取消", "骇入", "逃跑"]
+        # 特化：仅「变量」拥有「静默」动作（三回合静默解锁宽恕的隐藏彩蛋）
+        if self.enemy_data and self.enemy_data.get("id") == "snow_1_2_variable":
+            options.append("静默")
+        return options
 
     def handle_act_input(self, event):
         display_actions = self.get_act_options()
@@ -107,10 +127,25 @@ class MenuMixin:
                 self.current_phase = self.PHASE_MENU
                 self.act_selection_idx = 0
             elif selected_act == "骇入":
+                self.silent_streak = 0
                 self.do_hack()
             elif selected_act == "逃跑":
+                self.silent_streak = 0
                 self.action_text = "* 你逃跑了。"
                 self._exit_battle()
+            elif selected_act == "静默":
+                # 变量彩蛋：三回合静默解锁宽恕
+                self.silent_streak += 1
+                if self.silent_streak >= 3:
+                    self.silent_streak = 3
+                    if self.game_state is not None:
+                        self.game_state.mercy_unlocked = True
+                    self.action_text = "* 你第三次沉默。某种边界，悄然松动了。"
+                else:
+                    self.action_text = "* 你沉默不语。"
+                self.current_phase = self.PHASE_PLAYER_ANIM
+                self.next_phase_after_anim = self.PHASE_ENEMY_TURN
+                self.action_timer = 60
             else:
                  self.action_text = f"* 你进行了 {selected_act}。"
                  self.current_phase = self.PHASE_PLAYER_ANIM
@@ -237,6 +272,7 @@ class MenuMixin:
                          self.failure_emp_used = True
                          if self.game_state is not None:
                              self.game_state.failure_emp_used = True
+                         self.anthe_glitch_timer = 90
                          self.action_text = "* 你释放了电磁脉冲！失败之作的秒杀机制被瓦解了。"
 
                          # 消耗道具

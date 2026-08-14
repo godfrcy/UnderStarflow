@@ -32,7 +32,10 @@ def save_game(player, game_state, current_map_id):
             "last_rest_pos": game_state.last_rest_pos,
             "current_map_id": current_map_id,
             "last_entry_type": game_state.last_entry_type,
-            "failure_emp_used": game_state.failure_emp_used
+            "failure_emp_used": game_state.failure_emp_used,
+            "seen_lines": game_state.seen_lines,
+            "final_boss_defeated": game_state.final_boss_defeated,
+            "mercy_unlocked": game_state.mercy_unlocked
         }
     }
 
@@ -88,6 +91,18 @@ def load_game(player, game_state):
         player.inventory = p_data.get("inventory", [])
         player.battery_count = p_data.get("battery_count", 3)
 
+        # 物品迁移：boss 战利品统一命名 + 补特殊 tag（兼容旧存档）
+        for item in player.inventory:
+            if not isinstance(item, dict):
+                continue
+            name = item.get("name")
+            if name == "鬼武士的断刃":
+                item["name"] = "鬼武士的动力炉"
+                item["description"] = "鬼武士的核心部件"
+                item["tag"] = "boss_trophy"
+            elif name in ("黑色游侠的动力炉", "鬼武士的动力炉"):
+                item.setdefault("tag", "boss_trophy")
+
         g_data = data["game_state"]
         game_state.current_era = g_data.get("current_era", "Ice_Wind_Era")
         game_state.sync_rate = g_data.get("sync_rate", 50)
@@ -99,6 +114,9 @@ def load_game(player, game_state):
         game_state.last_rest_pos = tuple(g_data.get("last_rest_pos", (128 * 3, 128 * 5)))
         game_state.last_entry_type = g_data.get("last_entry_type", None)
         game_state.failure_emp_used = g_data.get("failure_emp_used", False)
+        game_state.seen_lines = g_data.get("seen_lines", [])
+        game_state.final_boss_defeated = g_data.get("final_boss_defeated", False)
+        game_state.mercy_unlocked = g_data.get("mercy_unlocked", False)
         map_id = g_data.get("current_map_id", "start")
 
         print("Game Loaded Successfully.")

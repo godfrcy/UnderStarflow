@@ -6,7 +6,7 @@ from engine.utils import resource_path
 from engine.config import RENDER_TILE_SIZE, ENEMY_ANIM_SPEED
 
 class OverworldEnemy(pygame.sprite.Sprite):
-    def __init__(self, x, y, folder_name="characters/enemies/variable_anim", file_prefix="variable", is_grid=False, flip_on_load=False, anim_speed_factor=1.0, custom_size=None, is_static=False):
+    def __init__(self, x, y, folder_name="characters/enemies/variable_anim", file_prefix="variable", is_grid=False, flip_on_load=False, anim_speed_factor=1.0, custom_size=None, is_static=False, skip_frames=None, skip_idle_frames=None):
         super().__init__()
         self.custom_size = custom_size
         self.is_static = is_static
@@ -15,12 +15,22 @@ class OverworldEnemy(pygame.sprite.Sprite):
         self.default_facing = "right"
         self.frames = []
         self.load_frames(folder_name, file_prefix, is_grid, flip_on_load)
+
+        # 弃用（跳过）有抠图瑕疵的帧：与战斗动图同步，不删除图片文件，保险起见
+        if skip_frames and len(self.frames) > len(skip_frames):
+            skip_set = set(skip_frames)
+            self.frames = [img for i, img in enumerate(self.frames) if i not in skip_set]
         
         # New: Idle Frames Logic (Optional)
         self.frames_idle = []
         if "rebel_leader" in folder_name:
             self.load_idle_frames(folder_name)
-        
+
+        # 弃用（跳过）站立动画中有瑕疵的帧：与主帧 skip_frames 同理，不删除图片，保险起见
+        if skip_idle_frames and len(self.frames_idle) > len(skip_idle_frames):
+            skip_set = set(skip_idle_frames)
+            self.frames_idle = [img for i, img in enumerate(self.frames_idle) if i not in skip_set]
+
         self.frame_index = 0
         self.image = self.frames[0] if self.frames else pygame.Surface((64, 64))
         self.rect = self.image.get_rect()

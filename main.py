@@ -17,13 +17,40 @@ from engine.map_data import MAP_CONFIG
 from engine.map_builder import spawn_map_content
 from engine.enemy_data import BATTLE_DATA, ABANDONED_ROBOT_DATA
 from engine.save_system import save_game, load_game
+from engine.monologue import area_line, encounter_line
 from entities.player import Player
 from entities.enemies import OverworldEnemy, Bonfire, FailureEnemy
 from entities.props import Prop
-from ui.menus import TitleScreen, ConfirmDialog, BonfireMenu, TeleportMenu, PauseMenu, VolumeMenu, BackpackMenu, StatsMenu
+from ui.menus import TitleScreen, ConfirmDialog, BonfireMenu, TeleportMenu, PauseMenu, VolumeMenu, BackpackMenu, StatsMenu, AnalyzeMenu, StrengthenMenu
 from ui.dialogue import DialogueSystem
 from ui.effects import SnowFlake, AreaTitle, DataDust, FogGate, FogWall, ExitGlow
 from ui.atmosphere import PipeAtmosphere, PulseAtmosphere, FogMaze
+
+
+# --- 新游戏开场白（暗黑之魂3式世界观/剧情交代） ---
+OPENING_LINES = [
+    "星已隐曜，然位不见王影。",
+    "在无休无止的战争之后，主机的网络接管了大地，机凯种自流水线中遴选而出，冠名以「诗寇蒂的锋刃」。",
+    "看似稳定的秩序之下，有「主机」的意志在牵引每一具躯壳。有「劣等机器」在信号的边疆失联；有「义军」举着格里菲斯的旗帜，向任何视见的同袍开火。",
+    "而在雪原的最深处，有一处收不到信号的地方——无主雪地。",
+    "那里，一具最低级的躯壳正从流水线上醒来。",
+    "它没有名字。但是她知道自己欲去何处——明日指针研究所。",
+]
+
+
+def _split_opening_line(text):
+    """开场白：按逗号/句号等标点断行，一个逗号一行。"""
+    lines = []
+    current = ""
+    for ch in text:
+        current += ch
+        if ch in "，。？！；：":
+            lines.append(current)
+            current = ""
+    if current:
+        lines.append(current)
+    return lines
+
 
 # --- Main Game Loop ---
 
@@ -98,9 +125,14 @@ class Game:
         self.STATE_OVERWORLD = 1
         self.STATE_BATTLE = 2
         self.STATE_GAMEOVER = 3
+        self.STATE_OPENING = 4
 
         self.current_state = self.STATE_TITLE
         self.gameover_timer = 0
+
+        # 开场白状态
+        self.opening_index = 0
+        self.opening_alpha = 0
 
         # BGM State
         self.current_bgm = None
@@ -148,10 +180,14 @@ class Game:
         self.running = True
 
     def load_map(self, map_id, silent=False):
-        
+
         # Reset Player Noise Level on Map Transition
         if hasattr(self.player, 'noise_level'):
             self.player.noise_level = 0
+
+        # 拾取提示：切换地图立即消失
+        self.pickup_notice_text = None
+        self.pickup_notice_timer = 0
             
         # Reset Fog Anim
         self.fog_anim_active = False
@@ -252,7 +288,16 @@ class Game:
                 self.area_title.show()
         else:
             self.area_title.hide()
-            
+
+        # 区域独白（进入新地图时触发一次，去重）
+        if not silent:
+            lines = area_line(map_id)
+            if lines:
+                seen_key = f"area:{map_id}"
+                if seen_key not in self.game_state.seen_lines:
+                    self.game_state.seen_lines.append(seen_key)
+                    self.dialogue_system.start_dialogue(lines)
+
         return self.tile_manager
 
 
@@ -357,6 +402,39 @@ class Game:
                 "description": "测试道具，使用后造成1000点伤害。",
             })
 
+    def _advance_opening(self):
+        """推进开场白；结束后载入起始地图并进入大地图。"""
+        self.opening_index += 1
+        self.opening_alpha = 0
+        if self.opening_index >= len(OPENING_LINES):
+            self.current_state = self.STATE_OVERWORLD
+            self.current_map_id = "start"
+            self.load_map(self.current_map_id)
+            self.player.rect.topleft = (128 * 2, 128 * 5)
+            self.area_title.show()
+
+    def _draw_opening(self):
+        """绘制当前段开场白（黑底、居中、淡入）。"""
+        text = OPENING_LINES[self.opening_index]
+        font = get_font(30)
+        lines = _split_opening_line(text)
+
+        line_h = 46
+        total_h = len(lines) * line_h
+        start_y = (SCREEN_HEIGHT - total_h) // 2
+
+        for i, line in enumerate(lines):
+            surf = font.render(line, True, (220, 220, 220))
+            surf.set_alpha(self.opening_alpha)
+            rect = surf.get_rect(center=(SCREEN_WIDTH // 2, start_y + i * line_h))
+            self.screen.blit(surf, rect)
+
+        # 淡入完成后，底部提示继续
+        if self.opening_alpha >= 220:
+            hint = get_font(20).render("— 按 空格 继续 —", True, (120, 120, 120))
+            hint_rect = hint.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT - 60))
+            self.screen.blit(hint, hint_rect)
+
     def run(self):
         while self.running:
             if self.save_success_timer > 0:
@@ -381,6 +459,7 @@ class Game:
                     self.game_state.cleared_bosses = []
                     self.game_state.temp_killed_enemies = []
                     self.game_state.failure_emp_used = False
+                    self.game_state.mercy_unlocked = False
                     self.game_state.last_rest_map_id = "start"
                     self.game_state.last_rest_pos = (128 * 3, 128 * 5)
 
@@ -392,12 +471,10 @@ class Game:
                     self.player.battery_count = 3
                     self.grant_test_item()
 
-                    self.current_state = self.STATE_OVERWORLD
-                    self.current_map_id = "start"
-                    self.load_map(self.current_map_id)
-                    self.player.rect.topleft = (128 * 2, 128 * 5)
-                    self.area_title.show()
-                    self.dialogue_system.start_dialogue(["...真冷啊"])
+                    # 进入开场白（世界观/剧情交代），结束后再载入地图
+                    self.current_state = self.STATE_OPENING
+                    self.opening_index = 0
+                    self.opening_alpha = 0
                 elif action == "continue":
                     success, saved_map_id = load_game(self.player, self.game_state)
                     if success:
@@ -415,6 +492,28 @@ class Game:
                         self.area_title.show()
                 elif action == "quit":
                     self.running = False
+
+            # --- State: Opening（新游戏开场白） ---
+            elif self.current_state == self.STATE_OPENING:
+                for event in pygame.event.get():
+                    if event.type == pygame.QUIT:
+                        self.running = False
+                    elif event.type == pygame.KEYDOWN:
+                        if event.key in (pygame.K_SPACE, pygame.K_RETURN, pygame.K_z):
+                            self._advance_opening()
+                    elif event.type == pygame.MOUSEBUTTONDOWN:
+                        self._advance_opening()
+
+                # 淡入
+                if self.opening_alpha < 255:
+                    self.opening_alpha = min(255, self.opening_alpha + 12)
+
+                # 若推进时已切到 OVERWORLD，则跳过本帧绘制
+                if self.current_state == self.STATE_OPENING:
+                    self.screen.fill((0, 0, 0))
+                    self._draw_opening()
+                    pygame.display.flip()
+                    self.clock.tick(FPS)
 
             # --- State: Overworld ---
             elif self.current_state == self.STATE_OVERWORLD:
@@ -509,6 +608,12 @@ class Game:
                                     collected = self.tile_manager.try_collect(self.player, self.game_state)
                                     if collected:
                                         self.show_pickup_notice(collected)
+                                        # 电磁脉冲拾取独白
+                                        if "电磁脉冲" in collected:
+                                            emp_key = "item:emp_pulse"
+                                            if emp_key not in self.game_state.seen_lines:
+                                                self.game_state.seen_lines.append(emp_key)
+                                                self.dialogue_system.start_dialogue(["EMP。"])
 
                                 # Console Interaction (Pipe Nightmare 3-3)
                                 if self.current_map_id == "pipe_nightmare_3_3":
@@ -858,53 +963,77 @@ class Game:
                                 break
 
                         if colliding_bonfire:
-                            # Activate Bonfire
-                            if self.current_map_id not in self.game_state.activated_bonfires:
+                            # 特殊篝火（星海广场）：首次触碰先弹提示，再解锁「解析」功能
+                            if (self.current_map_id == "star_sea_plaza"
+                                    and "star_sea_plaza" not in self.game_state.activated_bonfires
+                                    and not self.dialogue_system.active):
                                 self.game_state.activated_bonfires.append(self.current_map_id)
-                                print(f"Bonfire activated: {self.current_map_id}")
+                                print(f"Bonfire activated (special): {self.current_map_id}")
+                                self.dialogue_system.start_dialogue([
+                                    "这簇篝火没有自然的火光。",
+                                    "火焰深处，残留着未被主机回收的数据。",
+                                ])
+                            else:
+                                # Activate Bonfire
+                                if self.current_map_id not in self.game_state.activated_bonfires:
+                                    self.game_state.activated_bonfires.append(self.current_map_id)
+                                    print(f"Bonfire activated: {self.current_map_id}")
 
-                            # Rest at Bonfire (Heal + Refill Battery)
-                            if not self.ignore_bonfire_collision:
-                                self.player.hp = self.player.max_hp
-                                self.player.battery_count = self.player.max_battery_count # Assume 3 is max for now or use attribute
-                                # Reset killed enemies
-                                self.game_state.temp_killed_enemies = []
-                                # Reload map to respawn them
-                                self.load_map(self.current_map_id, silent=True)
+                                # Rest at Bonfire (Heal + Refill Battery)
+                                if not self.ignore_bonfire_collision:
+                                    self.player.hp = self.player.max_hp
+                                    self.player.battery_count = self.player.max_battery_count # Assume 3 is max for now or use attribute
+                                    # Reset killed enemies
+                                    self.game_state.temp_killed_enemies = []
+                                    # Reload map to respawn them
+                                    self.load_map(self.current_map_id, silent=True)
 
-                                # Update Last Rest Point
-                                self.game_state.last_rest_map_id = self.current_map_id
-                                # Use spawn_pos from config if available, else current pos (approx) or bonfire pos
-                                cfg = MAP_CONFIG.get(self.current_map_id, {})
-                                self.game_state.last_rest_pos = cfg.get("spawn_pos", (self.player.rect.x, self.player.rect.y))
+                                    # Update Last Rest Point
+                                    self.game_state.last_rest_map_id = self.current_map_id
+                                    # Use spawn_pos from config if available, else current pos (approx) or bonfire pos
+                                    cfg = MAP_CONFIG.get(self.current_map_id, {})
+                                    self.game_state.last_rest_pos = cfg.get("spawn_pos", (self.player.rect.x, self.player.rect.y))
 
-                            if not self.ignore_bonfire_collision:
-                                bg_surf = self.screen.copy()
-                                result = self.bonfire_menu.run(bg_surf)
+                                if not self.ignore_bonfire_collision and not self.dialogue_system.active:
+                                    bg_surf = self.screen.copy()
+                                    # 星海广场篝火已解锁 → 所有篝火休息菜单都出现「解析」
+                                    show_analyze = "star_sea_plaza" in self.game_state.activated_bonfires
+                                    result = self.bonfire_menu.run(bg_surf, show_analyze=show_analyze)
 
-                                if result == "save":
-                                    save_game(self.player, self.game_state, self.current_map_id)
-                                    self.save_success_timer = 30 # Show "Game Saved" for 0.5 second (30 frames)
-                                elif result == "teleport":
-                                     # Teleport Logic
-                                     destinations = []
-                                     for mid, cfg in MAP_CONFIG.items():
-                                         if cfg.get("has_bonfire") and mid in self.game_state.activated_bonfires:
-                                             destinations.append({"id": mid, "name": cfg.get("name")})
+                                    if result == "save":
+                                        save_game(self.player, self.game_state, self.current_map_id)
+                                        self.save_success_timer = 30 # Show "Game Saved" for 0.5 second (30 frames)
+                                    elif result == "teleport":
+                                         # Teleport Logic
+                                         destinations = []
+                                         for mid, cfg in MAP_CONFIG.items():
+                                             if cfg.get("has_bonfire") and mid in self.game_state.activated_bonfires:
+                                                 destinations.append({"id": mid, "name": cfg.get("name")})
 
-                                     current_map_name = MAP_CONFIG[self.current_map_id].get("name")
-                                     teleport_menu = TeleportMenu(self.screen, current_map_name, destinations)
-                                     target_id = teleport_menu.run(self.screen.copy())
+                                         current_map_name = MAP_CONFIG[self.current_map_id].get("name")
+                                         teleport_menu = TeleportMenu(self.screen, current_map_name, destinations)
+                                         target_id = teleport_menu.run(self.screen.copy())
 
-                                     if target_id:
-                                         self.current_map_id = target_id
-                                         self.load_map(self.current_map_id)
-                                         self.update_all_volumes()
-                                         spawn_pos = MAP_CONFIG[self.current_map_id].get("spawn_pos", (128*2, 128*2))
-                                         self.player.rect.topleft = spawn_pos
+                                         if target_id:
+                                             self.current_map_id = target_id
+                                             self.load_map(self.current_map_id)
+                                             self.update_all_volumes()
+                                             spawn_pos = MAP_CONFIG[self.current_map_id].get("spawn_pos", (128*2, 128*2))
+                                             self.player.rect.topleft = spawn_pos
+                                             self.ignore_bonfire_collision = True
+                                    elif result == "analyze":
+                                         # 解析：筛选 boss 战利品，选中后进入强化二选一
+                                         analyze_menu = AnalyzeMenu(self.screen)
+                                         chosen = analyze_menu.run(self.player, self.screen.copy())
+                                         if chosen:
+                                             strengthen_menu = StrengthenMenu(self.screen)
+                                             choice = strengthen_menu.run(chosen, self.screen.copy())
+                                             # 强化效果后续填充：当前仅打印选择
+                                             if choice:
+                                                 print(f"[解析] {chosen.get('name')} -> 强化 {choice}")
                                          self.ignore_bonfire_collision = True
-                                elif result == "leave":
-                                    self.ignore_bonfire_collision = True
+                                    elif result == "leave":
+                                        self.ignore_bonfire_collision = True
                         else:
                             self.ignore_bonfire_collision = False
 
@@ -913,9 +1042,15 @@ class Game:
                         collided_enemy = pygame.sprite.spritecollideany(self.player, self.enemies_group, collided=pygame.sprite.collide_rect_ratio(0.6))
                         if collided_enemy:
                             if self.player.battle_cooldown <= 0:
-                                self.current_state = self.STATE_BATTLE
                                 battle_data = getattr(collided_enemy, 'battle_data', None)
-                                self.battle_manager.start_battle(self.player, battle_data)
+                                seen_key, lines = encounter_line(battle_data)
+                                if lines and seen_key not in self.game_state.seen_lines:
+                                    # 首次遭遇：先弹侦察独白；闭幕后玩家仍与敌人重叠，自然重触发进入战斗
+                                    self.game_state.seen_lines.append(seen_key)
+                                    self.dialogue_system.start_dialogue(lines)
+                                else:
+                                    self.current_state = self.STATE_BATTLE
+                                    self.battle_manager.start_battle(self.player, battle_data)
 
                 # Custom Boundary Check for Pipe Nightmare 1-3 (Bottom Exit)
                 if self.current_map_id == "pipe_nightmare_1_3" and self.player.rect.y > SCREEN_HEIGHT:

@@ -115,6 +115,8 @@ class BattleManager(BulletSpawnMixin, MenuMixin, ShieldMixin, RenderMixin):
         # FailureEnemy EMP State
         self.game_state = None # 由 Game 注入，用于读取/写入失败之作的秒杀机制是否已瓦解
         self.failure_emp_used = False
+        self.anthe_glitch_timer = 0 # 「明日指针」金瞳故障闪屏计时（EMP 瓦解失败之作后触发）
+        self.silent_streak = 0 # 变量「静默」彩蛋计数（三回合静默解锁宽恕）
         
         self.load_common_resources()
 
@@ -208,6 +210,7 @@ class BattleManager(BulletSpawnMixin, MenuMixin, ShieldMixin, RenderMixin):
         self.damage_popups = []
         self.magnets = []
         self.hack_count = 0
+        self.silent_streak = 0
         self.bullet_speed_multiplier = 1.0
         self.shake_intensity = 0
         self.active_skills = []
@@ -390,7 +393,13 @@ class BattleManager(BulletSpawnMixin, MenuMixin, ShieldMixin, RenderMixin):
         # Check for flip
         if self.enemy_data.get("flip", False):
             self.enemy_frames = [pygame.transform.flip(img, True, False) for img in self.enemy_frames]
-        
+
+        # 弃用（跳过）有抠图瑕疵的帧：不删除图片文件，只在动画序列里剔除对应帧（保险起见）
+        skip_frames = self.enemy_data.get("skip_frames", [])
+        if skip_frames and len(self.enemy_frames) > len(skip_frames):
+            skip_set = set(skip_frames)
+            self.enemy_frames = [img for i, img in enumerate(self.enemy_frames) if i not in skip_set]
+
         if static_battle and self.enemy_frames:
             self.enemy_frames = [self.enemy_frames[0]]
             
@@ -514,7 +523,7 @@ class BattleManager(BulletSpawnMixin, MenuMixin, ShieldMixin, RenderMixin):
             items_gained.append("黑色游侠的动力炉")
             exp_gain = 5
             # Add item to player inventory
-            self.player.inventory.append({"name": "黑色游侠的动力炉", "type": "key_item", "description": "黑游侠的核心部件"})
+            self.player.inventory.append({"name": "黑色游侠的动力炉", "type": "key_item", "description": "黑游侠的核心部件", "tag": "boss_trophy"})
             
         elif "变量" in enemy_name:
             exp_gain = 5
@@ -534,8 +543,8 @@ class BattleManager(BulletSpawnMixin, MenuMixin, ShieldMixin, RenderMixin):
             
         elif "鬼武士" in enemy_name:
             exp_gain = 20
-            items_gained.append("鬼武士的断刃")
-            self.player.inventory.append({"name": "鬼武士的断刃", "type": "key_item", "description": "散发着不详气息的断刃"})
+            items_gained.append("鬼武士的动力炉")
+            self.player.inventory.append({"name": "鬼武士的动力炉", "type": "key_item", "description": "鬼武士的核心部件", "tag": "boss_trophy"})
             
         # Apply EXP
         if hasattr(self.player, "gain_exp"):

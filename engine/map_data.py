@@ -254,7 +254,8 @@ MAP_CONFIG = {
         "up": None,
         "bgm": "audio/bgm/oldcore.mp3",
         "name": "星海广场",
-        "has_bonfire": False,
+        "has_bonfire": True,
+        "bonfire_pos": (128 * 3, 128 * 3), # 特殊篝火：解锁后休息菜单出现「解析」功能
         "show_title": True,
         "glow_edges": [{"edge": "right", "start": 256}]
     },
