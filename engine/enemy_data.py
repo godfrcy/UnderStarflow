@@ -34,8 +34,7 @@ BATTLE_DATA = {
         "image_folder": "characters/enemies/berserk_variable/berserk_variable.png",
         "image_prefix": "variable",
         "is_grid": True,
-        # 弃用（跳过）有透明区块的帧：头顶方框内出现透明缺口（抠图瑕疵），不删除图片，保险起见
-        # 12 = slice_3_0(r3c0)，14 = slice_3_2(r3c2)
+        # 弃用有透明瑕疵的帧，不删除图片
         "skip_frames": [12, 14],
         "bgm": "audio/bgm/monster_song.mp3",
     },
@@ -94,7 +93,7 @@ BATTLE_DATA = {
         "image_folder": "characters/enemies/machine_soldier",
         "image_prefix": "jikaizhong",
         "is_grid": True,
-        # 弃用（跳过）有白块的帧：1_2(举光剑右侧白块)、3_3/3_4/4_1/4_2(胯下封闭区白块)，不删除图片
+        # 弃用有白块瑕疵的帧，不删除图片
         "skip_frames": [1, 10, 11, 12, 13],
         "bgm": "audio/bgm/machine_knight.mp3",
         "bgm_start": 17.5,

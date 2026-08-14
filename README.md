@@ -75,46 +75,46 @@ python main.py
 
 ```
 UnderStarflow/
-├── main.py              # 主入口（Game 类 + 状态机）
-├── bullet_designer.py   # 可视化弹幕设计器
-├── engine/              # 核心引擎
-│   ├── config.py        # 全局常量（屏幕、颜色、速度等）
-│   ├── game_state.py    # 游戏状态管理（篝火/道具/BOSS持久化）
-│   ├── map_data.py      # MAP_CONFIG 地图配置
-│   ├── enemy_data.py    # BATTLE_DATA 敌人战斗数据
-│   ├── save_system.py   # 存档 / 读档
-│   ├── map_builder.py   # 每张地图的实体/道具/雾门生成
-│   ├── battle_system.py # BattleManager 核心（组装各 mixin）
-│   ├── battle_menus.py  # 战斗菜单 mixin（QTE/ACT/ITEM/MERCY/FLEE）
-│   ├── battle_spawner.py# 弹幕生成 mixin
-│   ├── battle_shield.py # 护盾小游戏 mixin
-│   ├── battle_render.py # 战斗渲染 mixin
-│   ├── pattern_loader.py# JSON 弹幕模式加载器
-│   ├── camera.py        # 摄像机跟随
-│   ├── tile_manager.py  # 瓦片地图加载与碰撞
-│   ├── audio.py         # BGM 加载/切换
-│   └── utils.py         # 资源路径解析、字体加载
-├── entities/            # 实体系统
-│   ├── player.py        # 玩家（动画、背包、属性）
-│   ├── enemies.py       # 大地图敌人（OverworldEnemy、Bonfire、FailureEnemy）
-│   ├── bullets.py       # 弹幕子弹（普通/激光/方块/等离子刃）
-│   ├── items.py         # 可收集道具
-│   ├── props.py         # 场景道具 Prop
-│   └── particles.py     # 战斗粒子（BattleDust / DebrisParticle）
-├── ui/                  # UI 系统
-│   ├── menus.py         # 标题/暂停/篝火/传送/背包/音量菜单
-│   ├── dialogue.py      # 对话系统（肖像框 + 文字）
-│   ├── effects.py       # 特效（雪花、雾气、数据尘埃、雾门）
-│   └── atmosphere.py    # 大气特效（Pipe/Pulse Atmosphere、FogMaze）
-├── assetsDB/            # 资源仓库（图片/音频/地图瓦片）
-│   ├── audio/           # BGM + 音效
-│   ├── characters/      # 角色精灵（玩家 + 敌人）
-│   ├── items/           # 道具动画
-│   ├── maps/            # 地图瓦片集
-│   ├── objects/         # 场景物件（篝火等）
-│   └── ui/              # UI 素材（背景/肖像/图标）
-├── savegame.json        # 存档文件
-└── build_exe.py         # PyInstaller 打包脚本
+├── main.py
+├── bullet_designer.py
+├── engine/
+│   ├── config.py
+│   ├── game_state.py
+│   ├── map_data.py
+│   ├── enemy_data.py
+│   ├── save_system.py
+│   ├── map_builder.py
+│   ├── battle_system.py
+│   ├── battle_menus.py
+│   ├── battle_spawner.py
+│   ├── battle_shield.py
+│   ├── battle_render.py
+│   ├── pattern_loader.py
+│   ├── camera.py
+│   ├── tile_manager.py
+│   ├── audio.py
+│   └── utils.py
+├── entities/
+│   ├── player.py
+│   ├── enemies.py
+│   ├── bullets.py
+│   ├── items.py
+│   ├── props.py
+│   └── particles.py
+├── ui/
+│   ├── menus.py
+│   ├── dialogue.py
+│   ├── effects.py
+│   └── atmosphere.py
+├── assetsDB/
+│   ├── audio/
+│   ├── characters/
+│   ├── items/
+│   ├── maps/
+│   ├── objects/
+│   └── ui/
+├── savegame.json
+└── build_exe.py
 ```
 
 ## 资源中英文对照

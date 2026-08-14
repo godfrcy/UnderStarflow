@@ -96,7 +96,7 @@ def spawn_map_content(map_id, config, extra_obstacles, game_state, tile_manager,
         enemy_id = "snow_1_2_variable"
         if enemy_id not in game_state.temp_killed_enemies:
             # Point to the FILE, not a folder. OverworldEnemy now handles files.
-            # skip_frames 与战斗动图同步（弃用同一批抠图瑕疵帧）
+            # 与战斗动图同步弃用瑕疵帧
             enemy = OverworldEnemy(128 * 4, 128 * 2, "characters/enemies/berserk_variable/berserk_variable.png", "variable", is_grid=True, skip_frames=BATTLE_DATA["variable"].get("skip_frames", []))
             enemy.battle_data = dict(BATTLE_DATA["variable"])
             enemies_group.add(enemy)
@@ -248,7 +248,7 @@ def spawn_map_content(map_id, config, extra_obstacles, game_state, tile_manager,
         # Center of map (approx 128*3, 128*3)
         enemy_id = "base_2_machine"
         if enemy_id not in game_state.temp_killed_enemies:
-            # skip_frames 与战斗动图同步（弃用同一批白块瑕疵帧）
+            # 与战斗动图同步弃用瑕疵帧
             enemy = OverworldEnemy(128 * 3, 128 * 3, "characters/enemies/machine_soldier", "jikaizhong", is_grid=True, skip_frames=BATTLE_DATA["machine_soldier"].get("skip_frames", []))
             enemy.battle_data = dict(BATTLE_DATA["machine_soldier"])
             enemies_group.add(enemy)
@@ -259,7 +259,7 @@ def spawn_map_content(map_id, config, extra_obstacles, game_state, tile_manager,
         # Use rebel_leader assets
         enemy_id = "base_3_admin"
         if enemy_id not in game_state.temp_killed_enemies:
-            # skip_idle_frames 弃用站立动画（frames_idle）中的瑕疵帧：6 = rebel_3_3（站立动图肉眼发现需弃用），不删除图片
+            # 弃用站立动画中的瑕疵帧，不删除图片
             enemy = OverworldEnemy(128 * 3, 128 * 3, "characters/enemies/rebel_leader", "rebel_leader", is_grid=True, skip_idle_frames=[6])
             enemy.ANIM_SPEED = 12 # Slow down animation
             # Rebel Exclusive: Enable Chase Logic
