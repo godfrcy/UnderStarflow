@@ -7,7 +7,8 @@ from ui.effects import DataDust, FogGate, FogWall
 
 
 def spawn_map_content(map_id, config, extra_obstacles, game_state, tile_manager,
-                      enemies_group, bonfire_group, props_group, particles):
+                      enemies_group, bonfire_group, props_group, particles,
+                      fog_wall=None, fog_walls=None):
     """按 map_id 生成雾门/雾墙、敌人、道具、收集物（原 main.load_map 内联逻辑）。"""
     # Fog Gate
     fog_gates = [] # Clear fog gates

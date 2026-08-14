@@ -132,7 +132,8 @@ def main():
         # 生成雾门/雾墙 + 敌人/道具/收集物（抽到 engine/map_builder.py）
         fog_gates, fog_wall, fog_walls = spawn_map_content(
             map_id, config, extra_obstacles, game_state, tile_manager,
-            enemies_group, bonfire_group, props_group, particles
+            enemies_group, bonfire_group, props_group, particles,
+            fog_wall, fog_walls
         )
         # 3. Update Camera Limit
         camera.set_map_size(tile_manager.width, tile_manager.height)
