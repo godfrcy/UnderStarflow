@@ -81,20 +81,8 @@ class RenderMixin:
             
         elif self.current_phase == self.PHASE_ITEM_SELECT:
             # Consolidate inventory to ensure display matches logic
-            if hasattr(self.player, 'consolidate_inventory'):
-                self.player.consolidate_inventory()
-                
-            consumables = [item for item in self.player.inventory if item.get("type") in ["consumable", "battery"]]
-            display_names = []
-            for item in consumables:
-                name = item.get("name", "Unknown")
-                count = item.get("count", 1)
-                if count > 1:
-                    display_names.append(f"{name} x{count}")
-                else:
-                    display_names.append(name)
-            
-            self.draw_list_selection(box_draw_rect, ["取消", f"能量电池 x{self.player.battery_count}"] + display_names, self.item_selection_idx)
+            display_items, _ = self._build_consumable_list()
+            self.draw_list_selection(box_draw_rect, display_items, self.item_selection_idx)
             
         elif self.current_phase == self.PHASE_MERCY_SELECT:
             self.draw_list_selection(box_draw_rect, ["取消", "宽恕"], self.mercy_selection_idx)

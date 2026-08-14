@@ -197,7 +197,6 @@ class BulletSpawnMixin:
                 
         # Ruin Cutting Sequence
         if "ruin_cutting_sequence" in self.active_skills:
-            time_elapsed = self.ENEMY_TURN_DURATION - self.enemy_turn_timer
             if time_elapsed % 40 == 0:
                 cycle = time_elapsed // 40
                 blade_width, blade_height = 150, 40
@@ -213,7 +212,6 @@ class BulletSpawnMixin:
                 
         # Laser Network
         if "laser_network" in self.active_skills:
-            time_elapsed = self.ENEMY_TURN_DURATION - self.enemy_turn_timer
             if time_elapsed % 140 == 10: 
                 x_steps = list(range(self.battle_box.left + 40, self.battle_box.right - 40, 60))
                 y_steps = list(range(self.battle_box.top + 40, self.battle_box.bottom - 40, 60))
@@ -226,7 +224,6 @@ class BulletSpawnMixin:
 
         # Ghost Slash (Purple Plasma Blades)
         if "ghost_slash" in self.active_skills:
-            time_elapsed = self.ENEMY_TURN_DURATION - self.enemy_turn_timer
             if time_elapsed % 45 == 0: # Slightly slower than ruin cutting
                 cycle = time_elapsed // 45
                 blade_width, blade_height = 150, 40
@@ -275,7 +272,6 @@ class BulletSpawnMixin:
 
         # Samurai Fire Walls (Skill B)
         if "samurai_fire_walls" in self.active_skills:
-            time_elapsed = self.ENEMY_TURN_DURATION - self.enemy_turn_timer
             
             # 3 Waves: Increased intervals (60, 180, 300) to fill the turn and reduce difficulty
             if time_elapsed in [60, 180, 300]:
@@ -342,7 +338,6 @@ class BulletSpawnMixin:
 
         # Samurai Gravity Jump (Skill C)
         if "samurai_gravity_jump" in self.active_skills:
-             time_elapsed = self.ENEMY_TURN_DURATION - self.enemy_turn_timer
              
              # Fire Pillars
              if time_elapsed % 60 == 0: # Every second
@@ -373,7 +368,6 @@ class BulletSpawnMixin:
 
         # Flash Cut (Fast Lasers)
         if "flash_cut" in self.active_skills:
-            time_elapsed = self.ENEMY_TURN_DURATION - self.enemy_turn_timer
             # Warning at 0, Fire at 40.
             # Multiple cuts
             if time_elapsed % 60 == 0:
@@ -391,7 +385,6 @@ class BulletSpawnMixin:
 
         # Escape Dust (Skill A for Abandoned Robot)
         if "escape_dust" in self.active_skills:
-            time_elapsed = self.ENEMY_TURN_DURATION - self.enemy_turn_timer
             # Spawn 5 Dusts at the beginning (Frame 1)
             if time_elapsed == 1:
                 self.dusts = [] # Clear previous if any

@@ -130,6 +130,48 @@ class BattleManager(BulletSpawnMixin, MenuMixin, ShieldMixin, RenderMixin):
         except Exception as e:
             print(f"Failed to load calibration sfx: {e}")
 
+    # ============================================================
+    # 共享辅助方法（去重：心居中 / 缩框 / 退出战斗 / 消耗品列表 / 伤害飘字）
+    # ============================================================
+    def _recenter_heart(self):
+        self.heart_pos = [float(self.battle_box.centerx - self.heart_rect.width / 2),
+                          float(self.battle_box.centery - self.heart_rect.height / 2)]
+        self.heart_rect.x = int(self.heart_pos[0])
+        self.heart_rect.y = int(self.heart_pos[1])
+
+    def _shrink_box(self, w, h=None):
+        if not hasattr(self, 'original_battle_box'):
+            self.original_battle_box = self.battle_box.copy()
+        if h is None:
+            h = self.original_battle_box.height
+        self.battle_box = pygame.Rect(0, 0, w, h)
+        self.battle_box.center = self.original_battle_box.center
+
+    def _exit_battle(self):
+        self.current_phase = self.PHASE_PLAYER_ANIM
+        self.should_exit_battle = True
+        self.action_timer = 90
+        self.player.battle_cooldown = 180
+        self.player.rect.y += 128
+
+    def _build_consumable_list(self):
+        if hasattr(self.player, 'consolidate_inventory'):
+            self.player.consolidate_inventory()
+        consumables = [item for item in self.player.inventory if item.get("type") in ["consumable", "battery"]]
+        display_names = []
+        for item in consumables:
+            name = item.get("name", "Unknown")
+            count = item.get("count", 1)
+            if count > 1:
+                display_names.append(f"{name} x{count}")
+            else:
+                display_names.append(name)
+        display_items = ["取消", f"能量电池 x{self.player.battery_count}"] + display_names
+        return display_items, consumables
+
+    def _spawn_damage_popup(self, val, color, pos, timer=90):
+        self.damage_popups.append({'val': str(val), 'color': color, 'pos': list(pos), 'timer': timer})
+
     def start_battle(self, player, enemy_data=None):
         self.player = player
         self.enemy_data = enemy_data if enemy_data else {
@@ -414,12 +456,7 @@ class BattleManager(BulletSpawnMixin, MenuMixin, ShieldMixin, RenderMixin):
             if (self.qte_needle_speed > 0 and self.qte_needle_x > self.qte_rect.right) or \
                (self.qte_needle_speed < 0 and self.qte_needle_x < self.qte_rect.left):
                 self.damage_multiplier = 0.0
-                self.damage_popups.append({
-                    'val': "MISS",
-                    'color': (150, 150, 150),
-                    'pos': [self.enemy_rect.centerx, self.enemy_rect.top - 30],
-                    'timer': 90
-                })
+                self._spawn_damage_popup("MISS", (150, 150, 150), [self.enemy_rect.centerx, self.enemy_rect.top - 30])
                 self.is_attack_anim = True
                 self.current_phase = self.PHASE_PLAYER_ANIM
                 self.next_phase_after_anim = self.PHASE_ENEMY_TURN
@@ -507,10 +544,7 @@ class BattleManager(BulletSpawnMixin, MenuMixin, ShieldMixin, RenderMixin):
         if hasattr(self, 'is_shield_mode') and self.is_shield_mode:
             self.is_shield_mode = False
             self.battle_box = self.original_battle_box
-            self.heart_pos = [float(self.battle_box.centerx - self.heart_rect.width/2), 
-                              float(self.battle_box.centery - self.heart_rect.height/2)]
-            self.heart_rect.x = int(self.heart_pos[0])
-            self.heart_rect.y = int(self.heart_pos[1])
+            self._recenter_heart()
 
         # Reset Screen Inversion
         if hasattr(self, 'is_screen_inverted') and self.is_screen_inverted:
@@ -524,17 +558,13 @@ class BattleManager(BulletSpawnMixin, MenuMixin, ShieldMixin, RenderMixin):
              # Check if we have original box
              if hasattr(self, 'original_battle_box') and self.original_battle_box:
                  self.battle_box = self.original_battle_box
-                 self.heart_pos = [float(self.battle_box.centerx - self.heart_rect.width/2), 
-                                  float(self.battle_box.centery - self.heart_rect.height/2)]
-                 self.heart_rect.x = int(self.heart_pos[0])
-                 self.heart_rect.y = int(self.heart_pos[1])
+                 self._recenter_heart()
 
         self.enemy_turn_timer = self.ENEMY_TURN_DURATION
         self.bullets = []
         self.laser_warnings = []
         self.lasers = []
-        self.heart_rect.center = self.battle_box.center
-        self.heart_pos = [float(self.heart_rect.x), float(self.heart_rect.y)]
+        self._recenter_heart()
         
         # First turn: No attack (Observation) - REMOVED as per request
         # if self.turn_count == 1:
@@ -593,31 +623,17 @@ class BattleManager(BulletSpawnMixin, MenuMixin, ShieldMixin, RenderMixin):
                 self.shield_broken_timer = 0
                 
                 # Shrink Battle Box (Same as Admin Shield)
-                if not hasattr(self, 'original_battle_box'):
-                    self.original_battle_box = self.battle_box.copy()
-                self.battle_box = pygame.Rect(0, 0, 100, 100)
-                self.battle_box.center = self.original_battle_box.center
+                self._shrink_box(100, 100)
                 
-                self.heart_pos = [float(self.battle_box.centerx - self.heart_rect.width/2), 
-                                  float(self.battle_box.centery - self.heart_rect.height/2)]
-                self.heart_rect.x = int(self.heart_pos[0])
-                self.heart_rect.y = int(self.heart_pos[1])
+                self._recenter_heart()
                 
             elif skill_choice == "black_ranger_c":
                 self.dialog_text = "* 黑游侠EX 启动了火力压制。"
                 
                 # Shrink Battle Box to Small Size (Width 120, Height Normal)
-                if not hasattr(self, 'original_battle_box'):
-                    self.original_battle_box = self.battle_box.copy()
+                self._shrink_box(120)
                 
-                new_h = self.original_battle_box.height
-                self.battle_box = pygame.Rect(0, 0, 120, new_h) 
-                self.battle_box.center = self.original_battle_box.center
-                
-                self.heart_pos = [float(self.battle_box.centerx - self.heart_rect.width/2), 
-                                  float(self.battle_box.centery - self.heart_rect.height/2)]
-                self.heart_rect.x = int(self.heart_pos[0])
-                self.heart_rect.y = int(self.heart_pos[1])
+                self._recenter_heart()
                 self.bullet_spawn_timer = 0
             
         elif "admin" in enemy_name.lower():
@@ -633,14 +649,9 @@ class BattleManager(BulletSpawnMixin, MenuMixin, ShieldMixin, RenderMixin):
                 self.shield_dir = "UP"
                 self.shield_arrows = []
                 # Shrink Battle Box
-                self.original_battle_box = self.battle_box.copy()
-                self.battle_box = pygame.Rect(0, 0, 100, 100)
-                self.battle_box.center = self.original_battle_box.center
+                self._shrink_box(100, 100)
                 # Reset Heart to Center
-                self.heart_pos = [float(self.battle_box.centerx - self.heart_rect.width/2), 
-                                  float(self.battle_box.centery - self.heart_rect.height/2)]
-                self.heart_rect.x = int(self.heart_pos[0])
-                self.heart_rect.y = int(self.heart_pos[1])
+                self._recenter_heart()
             elif r < 0.66:
                 self.active_skills = ["laser", "ruin_cutting_sequence"]
                 self.dialog_text = "* Admin 启动了混合歼灭模式 (Laser + Cut)。"
@@ -705,7 +716,7 @@ class BattleManager(BulletSpawnMixin, MenuMixin, ShieldMixin, RenderMixin):
                 if uncollected_count > 0:
                     # Punishment: 5 DMG
                     self.player.take_damage(5)
-                    self.damage_popups.append({'val': str(5), 'color': (255, 0, 0), 'pos': list(self.heart_rect.topright), 'timer': 60})
+                    self._spawn_damage_popup(5, (255, 0, 0), self.heart_rect.topright, timer=60)
                     self.shake_intensity = 10
                     # Check death immediately?
                     if self.player.hp <= 0:
@@ -716,10 +727,7 @@ class BattleManager(BulletSpawnMixin, MenuMixin, ShieldMixin, RenderMixin):
             if hasattr(self, 'is_shield_mode') and self.is_shield_mode:
                 self.is_shield_mode = False
                 self.battle_box = self.original_battle_box
-                self.heart_pos = [float(self.battle_box.centerx - self.heart_rect.width/2), 
-                                  float(self.battle_box.centery - self.heart_rect.height/2)]
-                self.heart_rect.x = int(self.heart_pos[0])
-                self.heart_rect.y = int(self.heart_pos[1])
+                self._recenter_heart()
             
             # Reset Screen Inversion
             if hasattr(self, 'is_screen_inverted') and self.is_screen_inverted:
@@ -728,10 +736,7 @@ class BattleManager(BulletSpawnMixin, MenuMixin, ShieldMixin, RenderMixin):
             # Reset Battle Box for Skill C (if it was shrunk and not shield mode)
             if "black_ranger_c" in self.active_skills and hasattr(self, 'original_battle_box'):
                  self.battle_box = self.original_battle_box
-                 self.heart_pos = [float(self.battle_box.centerx - self.heart_rect.width/2), 
-                                  float(self.battle_box.centery - self.heart_rect.height/2)]
-                 self.heart_rect.x = int(self.heart_pos[0])
-                 self.heart_rect.y = int(self.heart_pos[1])
+                 self._recenter_heart()
             
             self.current_phase = self.PHASE_MENU
             self.bullets = []
@@ -777,8 +782,7 @@ class BattleManager(BulletSpawnMixin, MenuMixin, ShieldMixin, RenderMixin):
                 elif keys[pygame.K_RIGHT] or keys[pygame.K_d]: self.shield_dir = "RIGHT"
             
             # Lock Heart
-            self.heart_rect.center = self.battle_box.center
-            self.heart_pos = [float(self.heart_rect.x), float(self.heart_rect.y)]
+            self._recenter_heart()
             dx, dy = 0, 0
         else:
             dx = 0

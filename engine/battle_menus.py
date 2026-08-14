@@ -73,19 +73,9 @@ class MenuMixin:
         
         if final_damage > 0:
             self.enemy_hp -= final_damage
-            self.damage_popups.append({
-                'val': str(final_damage),
-                'color': (255, 0, 0),
-                'pos': [self.enemy_rect.centerx, self.enemy_rect.top - 30],
-                'timer': 90
-            })
+            self._spawn_damage_popup(final_damage, (255, 0, 0), [self.enemy_rect.centerx, self.enemy_rect.top - 30])
         else:
-            self.damage_popups.append({
-                'val': "MISS",
-                'color': (150, 150, 150),
-                'pos': [self.enemy_rect.centerx, self.enemy_rect.top - 30],
-                'timer': 90
-            })
+            self._spawn_damage_popup("MISS", (150, 150, 150), [self.enemy_rect.centerx, self.enemy_rect.top - 30])
             
         if self.enemy_hp < 0: self.enemy_hp = 0
         
@@ -120,11 +110,7 @@ class MenuMixin:
                 self.do_hack()
             elif selected_act == "逃跑":
                 self.action_text = "* 你逃跑了。"
-                self.current_phase = self.PHASE_PLAYER_ANIM
-                self.should_exit_battle = True
-                self.action_timer = 90
-                self.player.battle_cooldown = 180
-                self.player.rect.y += 128
+                self._exit_battle()
             else:
                  self.action_text = f"* 你进行了 {selected_act}。"
                  self.current_phase = self.PHASE_PLAYER_ANIM
@@ -161,23 +147,7 @@ class MenuMixin:
 
     def handle_item_input(self, event):
         # Consolidate inventory to merge duplicates before filtering
-        if hasattr(self.player, 'consolidate_inventory'):
-            self.player.consolidate_inventory()
-
-        # Filter consumables only (exclude materials/key_items)
-        # Also include "battery" type as "投掷电池" is defined as battery type in some places
-        consumables = [item for item in self.player.inventory if item.get("type") in ["consumable", "battery"]]
-        
-        display_names = []
-        for item in consumables:
-            name = item.get("name", "Unknown")
-            count = item.get("count", 1)
-            if count > 1:
-                display_names.append(f"{name} x{count}")
-            else:
-                display_names.append(name)
-        
-        display_items = ["取消", f"能量电池 x{self.player.battery_count}"] + display_names
+        display_items, consumables = self._build_consumable_list()
         
         if event.key == pygame.K_x or event.key == pygame.K_ESCAPE:
             self.current_phase = self.PHASE_MENU
@@ -232,12 +202,7 @@ class MenuMixin:
                 if item_name == "投掷电池":
                      damage = 20
                      self.enemy_hp -= damage
-                     self.damage_popups.append({
-                        'val': str(damage),
-                        'color': (255, 0, 0),
-                        'pos': [self.enemy_rect.centerx, self.enemy_rect.top - 30],
-                        'timer': 90
-                     })
+                     self._spawn_damage_popup(damage, (255, 0, 0), [self.enemy_rect.centerx, self.enemy_rect.top - 30])
                      if self.enemy_hp < 0: self.enemy_hp = 0
                      
                      # Decrement/Remove
@@ -273,11 +238,7 @@ class MenuMixin:
                 self.mercy_selection_idx = 0
             else:
                 self.action_text = f"* 你原谅了 {self.enemy_data.get('name', '敌人')}。"
-                self.current_phase = self.PHASE_PLAYER_ANIM
-                self.should_exit_battle = True
-                self.action_timer = 90
-                self.player.battle_cooldown = 180
-                self.player.rect.y += 128
+                self._exit_battle()
 
     def handle_flee_input(self, event):
         display_flee = ["取消", "逃跑"]
@@ -292,8 +253,4 @@ class MenuMixin:
                 self.flee_selection_idx = 0
             else:
                 self.action_text = "* 你逃跑了。"
-                self.current_phase = self.PHASE_PLAYER_ANIM
-                self.should_exit_battle = True
-                self.action_timer = 90
-                self.player.battle_cooldown = 180
-                self.player.rect.y += 128
+                self._exit_battle()
