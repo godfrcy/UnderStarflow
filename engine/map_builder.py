@@ -92,8 +92,7 @@ def spawn_map_content(map_id, config, extra_obstacles, game_state, tile_manager,
 
     if map_id == "snow_1_2":
         # Variable Entity (Replaces Machine Soldier)
-        # Using variable_grid which contains variable_X_Y.png
-        # Updated to use "新版变量.png" from assetsDB (Single file spritesheet)
+        # Single-file spritesheet (4x4 grid) from assetsDB
         enemy_id = "snow_1_2_variable"
         if enemy_id not in game_state.temp_killed_enemies:
             # Point to the FILE, not a folder. OverworldEnemy now handles files.
@@ -244,7 +243,9 @@ def spawn_map_content(map_id, config, extra_obstacles, game_state, tile_manager,
             # Rebel Exclusive: Enable Chase Logic
             enemy.can_chase = True
             enemy.vision_range = 300
-            enemy.chase_speed = 2.5
+            enemy.chase_speed = 2.5   # slow, dodgeable chase (original feel)
+            enemy.burst_speed = 6.0   # lunge speed once very close
+            enemy.burst_range = 80    # center-distance (px) where she bursts; > collision range (57-70)
             enemy.battle_data = dict(BATTLE_DATA["admin"])
             enemies_group.add(enemy)
 

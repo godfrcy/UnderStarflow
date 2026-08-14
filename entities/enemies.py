@@ -236,6 +236,10 @@ class OverworldEnemy(pygame.sprite.Sprite):
                     dy = player.rect.centery - self.rect.centery
                     angle = math.atan2(dy, dx)
                     speed = getattr(self, 'chase_speed', 2.0)
+                    # Burst: lunge faster once very close, so contact -> battle is immediate
+                    burst_range = getattr(self, 'burst_range', 0)
+                    if burst_range and dist <= burst_range:
+                        speed = getattr(self, 'burst_speed', speed)
                     self.pos[0] += math.cos(angle) * speed
                     self.pos[1] += math.sin(angle) * speed
                     self.rect.x = int(self.pos[0])

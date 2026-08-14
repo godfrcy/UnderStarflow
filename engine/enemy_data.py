@@ -31,7 +31,7 @@ BATTLE_DATA = {
         "hp": 50,
         "skills": ["laser", "cube", "random_particles"],
         "acts": ["嘲讽", "观察"],
-        "image_folder": "characters/enemies/berserk_variable/新版变量.png",
+        "image_folder": "characters/enemies/berserk_variable/berserk_variable.png",
         "image_prefix": "variable",
         "is_grid": True,
         "bgm": "audio/bgm/monster_song.mp3",
