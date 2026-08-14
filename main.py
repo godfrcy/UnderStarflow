@@ -22,7 +22,7 @@ from entities.enemies import OverworldEnemy, Bonfire, FailureEnemy
 from entities.props import Prop
 from ui.menus import TitleScreen, ConfirmDialog, BonfireMenu, TeleportMenu, PauseMenu, VolumeMenu, BackpackMenu, StatsMenu
 from ui.dialogue import DialogueSystem
-from ui.effects import SnowFlake, AreaTitle, DataDust, FogGate, FogWall
+from ui.effects import SnowFlake, AreaTitle, DataDust, FogGate, FogWall, ExitGlow
 from ui.atmosphere import PipeAtmosphere, PulseAtmosphere, FogMaze
 
 # --- Main Game Loop ---
@@ -46,6 +46,7 @@ class Game:
         # 2. Initialize Subsystems
         self.game_state = GameState()
         self.battle_manager = BattleManager(self.screen)
+        self.battle_manager.game_state = self.game_state
 
         # Camera & Map
         self.camera = Camera(SCREEN_WIDTH, SCREEN_HEIGHT) # Map size will be updated later if needed
@@ -64,6 +65,7 @@ class Game:
         self.fog_gates = [] # List of FogGates
         self.fog_wall = None
         self.fog_walls = [] # Fog walls list (multiple walls, pipe nightmare)
+        self.exit_glows = [] # 出口「数据缝」微光列表
 
         self.props_group = pygame.sprite.Group() # New Prop Group
 
@@ -113,6 +115,11 @@ class Game:
         # import random # Ensure random is available if not already (Removed to fix NameError)
 
         self.save_success_timer = 0
+
+        # 拾取提示（屏幕最下方，1.5s 后消失）
+        self.pickup_notice_text = None
+        self.pickup_notice_timer = 0
+        self.PICKUP_NOTICE_DURATION = 90  # 1.5s * 60FPS
 
         # Freeze Effect State (Pipe Nightmare 3-2)
         self.freeze_timer = 0
@@ -204,6 +211,31 @@ class Game:
         )
         # 3. Update Camera Limit
         self.camera.set_map_size(self.tile_manager.width, self.tile_manager.height)
+
+        # 出口「数据缝」微光（引导单向地图/岔路/锁门的出口方向）
+        # glow_edges 每项可为字符串简写（"right"）或字典（{"edge","start","end","locked"}）
+        self.exit_glows = []
+        has_core = any(item.get("id") == "liquid_nitrogen_core" for item in self.player.inventory if isinstance(item, dict))
+        for spec in config.get("glow_edges", []):
+            if isinstance(spec, str):
+                edge, start, end, locked, boss = spec, None, None, False, None
+            else:
+                edge = spec["edge"]
+                start = spec.get("start")
+                end = spec.get("end")
+                locked = spec.get("locked", False)
+                boss = spec.get("boss")  # 指定 boss_id：仅当该 boss 被击败后才显示此出口光
+            if boss and boss not in self.game_state.cleared_bosses:
+                continue  # 未击败对应 boss，暂不显示该出口光
+            if locked and has_core:
+                locked = False  # 已持核心 → 锁门直接亮蓝光
+            if edge in ("left", "right"):
+                s = start if start is not None else 256
+                e = end if end is not None else SCREEN_HEIGHT
+            else:
+                s = start if start is not None else 0
+                e = end if end is not None else SCREEN_WIDTH
+            self.exit_glows.append(ExitGlow(edge, s, e, locked=locked))
         
         # Ensure volume settings are applied to new entities and existing systems
         # This fixes the issue where Map Broadcast and other SFX might not track volume changes correctly
@@ -309,10 +341,31 @@ class Game:
             pygame.time.delay(15)
 
 
+    def show_pickup_notice(self, names):
+        """显示拾取提示（屏幕最下方，1.5s 后消失）。"""
+        if not names:
+            return
+        self.pickup_notice_text = f"* 获得了 {'、'.join(names)}"
+        self.pickup_notice_timer = self.PICKUP_NOTICE_DURATION
+
+    def grant_test_item(self):
+        """开局发放测试道具「测试」：战斗中造成1000伤害，用于秒杀boss验证路线。"""
+        if not any(isinstance(i, dict) and i.get("name") == "测试" for i in self.player.inventory):
+            self.player.inventory.append({
+                "name": "测试",
+                "type": "consumable",
+                "description": "测试道具，使用后造成1000点伤害。",
+            })
+
     def run(self):
         while self.running:
             if self.save_success_timer > 0:
                 self.save_success_timer -= 1
+
+            if self.pickup_notice_timer > 0:
+                self.pickup_notice_timer -= 1
+                if self.pickup_notice_timer == 0:
+                    self.pickup_notice_text = None
 
             # --- State: Title Screen ---
             if self.current_state == self.STATE_TITLE:
@@ -327,6 +380,7 @@ class Game:
                     self.game_state.collected_items = []
                     self.game_state.cleared_bosses = []
                     self.game_state.temp_killed_enemies = []
+                    self.game_state.failure_emp_used = False
                     self.game_state.last_rest_map_id = "start"
                     self.game_state.last_rest_pos = (128 * 3, 128 * 5)
 
@@ -336,6 +390,7 @@ class Game:
                     self.player.inventory = []
                     self.player.exp = 0
                     self.player.battery_count = 3
+                    self.grant_test_item()
 
                     self.current_state = self.STATE_OVERWORLD
                     self.current_map_id = "start"
@@ -346,6 +401,7 @@ class Game:
                 elif action == "continue":
                     success, saved_map_id = load_game(self.player, self.game_state)
                     if success:
+                        self.grant_test_item()
                         self.current_map_id = saved_map_id
                         self.load_map(self.current_map_id)
                         self.current_state = self.STATE_OVERWORLD
@@ -450,7 +506,9 @@ class Game:
                             elif event.key == pygame.K_SPACE:
                                 # Manual Item Interaction
                                 if self.tile_manager:
-                                    self.tile_manager.try_collect(self.player, self.game_state)
+                                    collected = self.tile_manager.try_collect(self.player, self.game_state)
+                                    if collected:
+                                        self.show_pickup_notice(collected)
 
                                 # Console Interaction (Pipe Nightmare 3-3)
                                 if self.current_map_id == "pipe_nightmare_3_3":
@@ -526,6 +584,13 @@ class Game:
                                 can_exit = False
                                 self.player.rect.left = 20 # Push back
                                 self.dialogue_system.start_dialogue(["检测到高温区域阻断。", "需要【液氮冷却核心】才能通过。"])
+
+                        # 2-2 -> 上升管道(通往地表)：需先击败鬼武士，左出口才解锁
+                        if self.current_map_id == "pipe_nightmare_2_2" and prev_map == "pipe_ascent_1":
+                            if "pipe_2_2_boss" not in self.game_state.cleared_bosses:
+                                can_exit = False
+                                self.player.rect.left = 20 # Push back
+                                self.dialogue_system.start_dialogue(["这条路的出口被武士的怨念封锁了。", "需要先击败鬼武士。"])
 
                         if prev_map and can_exit:
                             self.run_transition(prev_map, "right")
@@ -907,6 +972,11 @@ class Game:
                 if self.tile_manager:
                     self.tile_manager.draw(self.screen, self.camera)
 
+                # 出口「数据缝」微光（画在地板上，实体之下）
+                for glow in self.exit_glows:
+                    glow.update()
+                    glow.draw(self.screen)
+
                 # Draw Entities
                 # Collectibles are now drawn by tile_manager.draw()
 
@@ -974,8 +1044,10 @@ class Game:
                 except:
                     font = pygame.font.Font(None, 24)
 
-                hp_text = font.render(f"HP: {self.player.hp}/{self.player.max_hp}", True, (255, 255, 255))
-                self.screen.blit(hp_text, (10, 10))
+                # 拾取提示显示期间短暂隐藏 HP，避免重叠
+                if self.pickup_notice_timer == 0:
+                    hp_text = font.render(f"HP: {self.player.hp}/{self.player.max_hp}", True, (255, 255, 255))
+                    self.screen.blit(hp_text, (10, 10))
 
                 self.area_title.update()
                 self.area_title.draw()
@@ -986,6 +1058,20 @@ class Game:
                 if self.save_success_timer > 0:
                     save_msg = font.render("存档已保存", True, (0, 255, 0))
                     self.screen.blit(save_msg, (50, SCREEN_HEIGHT - 50))
+
+                # 拾取提示（紧贴屏幕最上方的全宽横条，1.5s 后消失）
+                if self.pickup_notice_timer > 0 and self.pickup_notice_text:
+                    try:
+                        notice_font = get_font(28)
+                    except:
+                        notice_font = pygame.font.Font(None, 28)
+                    notice_surf = notice_font.render(self.pickup_notice_text, True, (255, 255, 255))
+                    bar_h = 56
+                    bar = pygame.Surface((SCREEN_WIDTH, bar_h), pygame.SRCALPHA)
+                    bar.fill((0, 0, 0, 220))
+                    self.screen.blit(bar, (0, 0))
+                    notice_rect = notice_surf.get_rect(center=(SCREEN_WIDTH // 2, bar_h // 2))
+                    self.screen.blit(notice_surf, notice_rect)
 
                 pygame.display.flip()
                 self.clock.tick(FPS)

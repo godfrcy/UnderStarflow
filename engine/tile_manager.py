@@ -22,6 +22,7 @@ class TileManager:
         self.width = len(self.map_data[0]) * self.tile_width if self.map_data else 0
         self.height = len(self.map_data) * self.tile_height if self.map_data else 0
         self.collectibles = pygame.sprite.Group()
+        self.background_image = None  # 单图背景模式（文件夹里有 bg.png 时启用）
         self.load_tiles(tileset_folder)
         
         # 构建碰撞体 (基于逻辑地图 game_map，此时存储的是瓦片索引)
@@ -62,19 +63,36 @@ class TileManager:
             print(f"Error: {folder_path} not found.")
             return
 
-        print(f"Loading tiles from {folder_path}...")
-        
+        print(f"Loading map from {folder_path}...")
+
         # 获取所有图片文件
         valid_extensions = ('.png', '.jpg', '.jpeg', '.bmp')
         files = [f for f in os.listdir(folder_path) if f.lower().endswith(valid_extensions)]
-        
+
+        # 单图背景模式：文件夹里有 bg.png / background.png 就直接当整张背景（无需切瓦片）
+        bg_file = None
+        for f in files:
+            if os.path.splitext(f)[0].lower() in ("bg", "background"):
+                bg_file = f
+                break
+        if bg_file:
+            try:
+                path = os.path.join(folder_path, bg_file)
+                image = pygame.image.load(path).convert()
+                self.background_image = pygame.transform.scale(image, (self.width, self.height))
+                print(f"  -> 单图背景模式: {bg_file}")
+                return
+            except Exception as e:
+                print(f"Failed to load background {bg_file}: {e}")
+
+        # 否则回退到 36 瓦片模式（旧地图）
         # 自然排序
         def natural_sort_key(s):
             return [int(text) if text.isdigit() else text.lower()
                     for text in re.split('([0-9]+)', s)]
-        
+
         files.sort(key=natural_sort_key)
-        
+
         for f in files:
             try:
                 path = os.path.join(folder_path, f)
@@ -82,15 +100,15 @@ class TileManager:
                 image.set_colorkey((255, 255, 255))
                 # 强制缩放
                 image = pygame.transform.scale(image, (self.tile_width, self.tile_height))
-                
+
                 # Apply Rotation if needed
                 if self.rotation != 0:
                     image = pygame.transform.rotate(image, self.rotation)
-                
+
                 self.tiles.append(image)
             except Exception as e:
                 print(f"Failed to load {f}: {e}")
-                
+
         print(f"Loaded {len(self.tiles)} tiles.")
 
     def add_collectible(self, x, y, anim_folder_name, item_data=None, sound_file=None, item_id=None, scale=1.0):
@@ -103,39 +121,50 @@ class TileManager:
         self.collectibles.update()
 
     def try_collect(self, player, game_state):
-        """Check if player interacts with any items (Manual Collection)."""
+        """检查玩家是否与道具交互（手动拾取）。返回拾取到的道具名列表。"""
+        collected_names = []
         hits = pygame.sprite.spritecollide(player, self.collectibles, False)
         for collectible in hits:
             if not collectible.collected:
                 collectible.interact()
-                
+
                 # Persistence
                 if collectible.item_id:
                     game_state.collected_items.append(collectible.item_id)
-                
+
                 if collectible.item_data:
                     player.inventory.append(collectible.item_data)
                     player.has_new_item = True
-                    
+
+                    # 拾取提示
+                    name = collectible.item_data.get("name")
+                    if name:
+                        collected_names.append(name)
+
                     # Special handling for Battery type to update count
                     if collectible.item_data.get('type') == 'battery':
                         player.battery_count += collectible.item_data.get('value', 1)
                         if player.battery_count > player.max_battery_count:
                             player.battery_count = player.max_battery_count
+        return collected_names
 
     def draw(self, surface, camera=None):
-        # 暴力平铺 6x6
         offset_x = camera.camera.x if camera else 0
         offset_y = camera.camera.y if camera else 0
-        
-        for row in range(6):
-            for col in range(6):
-                index = row * 6 + col
-                # 防止越界
-                if index < len(self.tiles):
-                    x = col * self.tile_width + offset_x
-                    y = row * self.tile_height + offset_y
-                    surface.blit(self.tiles[index], (x, y))
+
+        if self.background_image:
+            # 单图背景模式：整张铺满
+            surface.blit(self.background_image, (offset_x, offset_y))
+        else:
+            # 暴力平铺 6x6
+            for row in range(6):
+                for col in range(6):
+                    index = row * 6 + col
+                    # 防止越界
+                    if index < len(self.tiles):
+                        x = col * self.tile_width + offset_x
+                        y = row * self.tile_height + offset_y
+                        surface.blit(self.tiles[index], (x, y))
 
         # Draw collectibles
         for collectible in self.collectibles:
@@ -143,6 +172,6 @@ class TileManager:
             # Collectible.rect is in world coordinates
             screen_x = collectible.rect.x + offset_x
             screen_y = collectible.rect.y + offset_y
-            
+
             if collectible.image:
                 surface.blit(collectible.image, (screen_x, screen_y))

@@ -111,7 +111,7 @@ def spawn_map_content(map_id, config, extra_obstacles, game_state, tile_manager,
                 "description": "极不稳定的电池，可以投掷。"
             }
             # Scale 0.5 (1/2 size) as requested
-            tile_manager.add_collectible(128 * 2, 128 * 5, "items/battery", item_data, "audio/bgm/new_items.mp3", item_id=item_id, scale=0.5)
+            tile_manager.add_collectible(128 * 2, 128 * 5, "items/battery", item_data, "audio/bgm/new_items.wav", item_id=item_id, scale=0.5)
 
     elif map_id == "pipe_nightmare_1":
         # 暴走变量_激光 at 5,5 (Restored Asset & Corrected Pos)
@@ -138,10 +138,10 @@ def spawn_map_content(map_id, config, extra_obstacles, game_state, tile_manager,
                  fw = FogWall(pygame.Rect(col * 128, row * 128, 128, 128))
                  fog_walls.append(fw)
 
-         # Spawn FailureEnemy
-         if "failure_enemy_01" not in game_state.temp_killed_enemies:
+         # Spawn FailureEnemy（击败鬼武士后会从这里消失，转移到上升管道3）
+         if "failure_enemy_01" not in game_state.temp_killed_enemies and "pipe_2_2_boss" not in game_state.cleared_bosses:
              # Center of map: 4x4 tiles, so 256, 256 is center-ish
-             enemy = FailureEnemy(128 * 2, 128 * 2) 
+             enemy = FailureEnemy(128 * 2, 128 * 2)
              enemy.battle_data = dict(BATTLE_DATA["failure"])
              enemies_group.add(enemy)
 
@@ -155,6 +155,25 @@ def spawn_map_content(map_id, config, extra_obstacles, game_state, tile_manager,
              console.hitbox.center = console.rect.center
              console.is_console = True # Flag for interaction
              props_group.add(console)
+
+    elif map_id == "pipe_ascent_1":
+        # 电磁脉冲（光点）——拾取后在战斗中使用，瓦解失败之作的秒杀机制
+        item_id = "emp_pulse"
+        if item_id not in game_state.collected_items:
+            item_data = {
+                "id": "emp_pulse",
+                "name": "电磁脉冲",
+                "type": "consumable",
+                "description": "释放一次电磁脉冲，瓦解失败之作的秒杀机制。",
+            }
+            tile_manager.add_collectible(128 * 3, 128 * 2, "items/battery", item_data, "audio/bgm/new_items.wav", item_id=item_id, scale=0.5)
+
+    elif map_id == "pipe_ascent_3":
+        # 击败鬼武士后，失败之作从3-3转移到这里（最左边，缓慢向右漂移，把守通往地表的路）
+        if "pipe_2_2_boss" in game_state.cleared_bosses and "failure_enemy_01" not in game_state.temp_killed_enemies:
+            enemy = FailureEnemy(64, 128 * 3, slow_right_drift=True) # 最左边，横向管道中央
+            enemy.battle_data = dict(BATTLE_DATA["failure"])
+            enemies_group.add(enemy)
 
     elif map_id == "base_5":
         if "base_5_boss" not in game_state.cleared_bosses:

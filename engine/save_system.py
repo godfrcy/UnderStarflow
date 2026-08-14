@@ -31,7 +31,8 @@ def save_game(player, game_state, current_map_id):
             "last_rest_map_id": game_state.last_rest_map_id,
             "last_rest_pos": game_state.last_rest_pos,
             "current_map_id": current_map_id,
-            "last_entry_type": game_state.last_entry_type
+            "last_entry_type": game_state.last_entry_type,
+            "failure_emp_used": game_state.failure_emp_used
         }
     }
 
@@ -97,6 +98,7 @@ def load_game(player, game_state):
         game_state.last_rest_map_id = g_data.get("last_rest_map_id", "start")
         game_state.last_rest_pos = tuple(g_data.get("last_rest_pos", (128 * 3, 128 * 5)))
         game_state.last_entry_type = g_data.get("last_entry_type", None)
+        game_state.failure_emp_used = g_data.get("failure_emp_used", False)
         map_id = g_data.get("current_map_id", "start")
 
         print("Game Loaded Successfully.")

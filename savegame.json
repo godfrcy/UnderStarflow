@@ -3,11 +3,11 @@
         "hp": 20,
         "max_hp": 20,
         "level": 1,
-        "exp": 25,
+        "exp": 20,
         "max_exp": 100,
         "attack": 10,
-        "x": 360,
-        "y": 287,
+        "x": 342,
+        "y": 386,
         "inventory": [
             {
                 "name": "投掷电池",
@@ -17,9 +17,28 @@
                 "count": 1
             },
             {
-                "name": "黑色游侠的动力炉",
+                "name": "测试",
+                "type": "consumable",
+                "description": "测试道具，使用后造成1000点伤害。",
+                "count": 1
+            },
+            {
+                "id": "liquid_nitrogen_core",
+                "name": "液氮冷却核心",
                 "type": "key_item",
-                "description": "黑游侠的核心部件"
+                "description": "极低温的冷却核心，可以冻结周围的空气。",
+                "count": 1
+            },
+            {
+                "name": "鬼武士的断刃",
+                "type": "key_item",
+                "description": "散发着不详气息的断刃"
+            },
+            {
+                "id": "emp_pulse",
+                "name": "电磁脉冲",
+                "type": "consumable",
+                "description": "释放一次电磁脉冲，瓦解失败之作的秒杀机制。"
             }
         ],
         "battery_count": 3
@@ -30,21 +49,23 @@
         "show_terminal_dialog": false,
         "activated_bonfires": [
             "start",
-            "base_1",
-            "pipe_nightmare_3"
+            "pipe_nightmare_3",
+            "pipe_ascent_2"
         ],
         "collected_items": [
-            "snow_1_2_battery_01"
+            "snow_1_2_battery_01",
+            "emp_pulse"
         ],
         "cleared_bosses": [
-            "base_5_boss"
+            "pipe_2_2_boss"
         ],
-        "last_rest_map_id": "pipe_nightmare_3",
+        "last_rest_map_id": "pipe_ascent_2",
         "last_rest_pos": [
             384,
-            512
+            384
         ],
-        "current_map_id": "pipe_nightmare_3",
-        "last_entry_type": "left"
+        "current_map_id": "pipe_ascent_2",
+        "last_entry_type": "right",
+        "failure_emp_used": false
     }
 }

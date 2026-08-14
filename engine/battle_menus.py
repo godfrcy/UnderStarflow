@@ -204,20 +204,58 @@ class MenuMixin:
                      self.enemy_hp -= damage
                      self._spawn_damage_popup(damage, (255, 0, 0), [self.enemy_rect.centerx, self.enemy_rect.top - 30])
                      if self.enemy_hp < 0: self.enemy_hp = 0
-                     
+
                      # Decrement/Remove
                      if hasattr(self.player, 'remove_item'):
                          self.player.remove_item(item_name, 1)
                      else:
                          if item in self.player.inventory:
                              self.player.inventory.remove(item)
-                         
+
                      self.action_text = f"* 你投掷了电池！对敌人造成了 {damage} 点伤害。"
-                     
+
                      self.current_phase = self.PHASE_PLAYER_ANIM
                      self.next_phase_after_anim = self.PHASE_ENEMY_TURN
                      self.action_timer = 90
                      self.item_selection_idx = 0
+                elif item_name == "测试":
+                     damage = 1000
+                     self.enemy_hp -= damage
+                     self._spawn_damage_popup(damage, (255, 0, 0), [self.enemy_rect.centerx, self.enemy_rect.top - 30])
+                     if self.enemy_hp < 0: self.enemy_hp = 0
+
+                     self.action_text = f"* 你使用了测试道具，对敌人造成了 {damage} 点伤害！"
+
+                     # 测试道具不消耗，方便反复秒杀
+                     self.current_phase = self.PHASE_PLAYER_ANIM
+                     self.next_phase_after_anim = self.PHASE_ENEMY_TURN
+                     self.action_timer = 90
+                     self.item_selection_idx = 0
+                elif item_name == "电磁脉冲":
+                     # 只对失败之作有效：瓦解它的秒杀机制（永久）
+                     if "failure_enemy" in self.enemy_data.get("id", ""):
+                         self.failure_emp_used = True
+                         if self.game_state is not None:
+                             self.game_state.failure_emp_used = True
+                         self.action_text = "* 你释放了电磁脉冲！失败之作的秒杀机制被瓦解了。"
+
+                         # 消耗道具
+                         if hasattr(self.player, 'remove_item'):
+                             self.player.remove_item(item_name, 1)
+                         else:
+                             if item in self.player.inventory:
+                                 self.player.inventory.remove(item)
+
+                         self.current_phase = self.PHASE_PLAYER_ANIM
+                         self.next_phase_after_anim = self.PHASE_ENEMY_TURN
+                         self.action_timer = 90
+                         self.item_selection_idx = 0
+                     else:
+                         self.action_text = "* 电磁脉冲对眼前的敌人没有效果。"
+                         self.current_phase = self.PHASE_PLAYER_ANIM
+                         self.next_phase_after_anim = self.PHASE_MENU
+                         self.action_timer = 60
+                         self.item_selection_idx = 0
                 else:
                     self.action_text = f"* 使用了 {item_name}，但什么也没发生。"
                     self.current_phase = self.PHASE_PLAYER_ANIM

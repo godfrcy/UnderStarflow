@@ -7,6 +7,7 @@ class GameState:
         self.collected_items = [] # IDs of collected items to prevent respawn
         self.cleared_bosses = [] # IDs of defeated bosses/cleared fog gates
         self.temp_killed_enemies = [] # IDs of enemies killed in current cycle (reset on rest/death)
+        self.failure_emp_used = False # 失败之作的秒杀机制是否已被电磁脉冲瓦解（永久）
         
         # Respawn Logic
         self.last_rest_map_id = "start"

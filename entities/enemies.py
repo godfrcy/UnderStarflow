@@ -276,13 +276,19 @@ class Bonfire(OverworldEnemy):
         self.hitbox.center = self.rect.center
 
 class FailureEnemy(OverworldEnemy):
-    def __init__(self, x, y, custom_size=None, is_static=False):
+    def __init__(self, x, y, custom_size=None, is_static=False, slow_right_drift=False):
         super().__init__(x, y, "characters/enemies/failure_boss", "", is_grid=False, custom_size=custom_size, is_static=is_static)
         self.can_chase = True
         self.vision_range = 50 # 接触范围
         self.chase_speed = 4.0
         self.default_facing = "left"
-        
+
+        # 上升管道3 特化：缓慢向右漂移（压迫感），玩家特别近才转正常追逐
+        self.slow_right_drift = slow_right_drift
+        self.drift_speed = 0.7
+        self.CLOSE_DIST = 90
+        self.DRIFT_ANIM_SPEED = 15 # 缓慢行走动画
+
         try:
             base_path = resource_path("characters/enemies/failure_boss")
             files = []
@@ -306,6 +312,12 @@ class FailureEnemy(OverworldEnemy):
         except Exception:
             pass
 
+        # 向右移动贴图（base 朝左，水平翻转后朝右）
+        self.frames_right = [pygame.transform.flip(f, True, False) for f in getattr(self, 'frames', [])]
+        if self.slow_right_drift and self.frames_right:
+            self.frame_index = 0
+            self.image = self.frames_right[0]
+
     def update(self, player=None):
         # Dynamic Vision Range Logic
         # If noise is high, expand vision range to map-wide to force chase
@@ -316,6 +328,31 @@ class FailureEnemy(OverworldEnemy):
                 self.vision_range = 2000 # "Hear" the player everywhere
             else:
                 self.vision_range = base_vision
-                
-        # Base update handles movement, animation switching, and flip
-        super().update(player)
+
+        if not self.slow_right_drift:
+            super().update(player)
+            return
+
+        # 玩家特别近 → 转正常追逐（上下移动 + 正常动作贴图）
+        if player:
+            dist = math.hypot(player.rect.centerx - self.rect.centerx,
+                              player.rect.centery - self.rect.centery)
+            if dist < self.CLOSE_DIST:
+                super().update(player)
+                return
+
+        # 否则：缓慢向右漂移，只用向右贴图（不翻转）
+        self.pos[0] += self.drift_speed
+        max_x = 6 * RENDER_TILE_SIZE - self.rect.width
+        if self.pos[0] > max_x:
+            self.pos[0] = max_x
+        self.rect.x = int(self.pos[0])
+
+        self.anim_timer += 1
+        if self.frames_right and self.anim_timer >= self.DRIFT_ANIM_SPEED:
+            self.anim_timer = 0
+            self.frame_index = (self.frame_index + 1) % len(self.frames_right)
+            self.image = self.frames_right[self.frame_index]
+
+        # 所有帧尺寸一致（同一批贴图水平翻转），无需重算 rect，
+        # 且绝不能把累积的 self.pos[0] 用 int(self.rect.x) 覆盖回去。

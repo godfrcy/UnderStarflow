@@ -7,6 +7,7 @@ MAP_CONFIG = {
         "bgm": "audio/bgm/city_ruins.mp3",
         "bgm_start": 4.0,
         "name": "无主雪地",
+        "glow_edges": ["right"],
         "has_bonfire": True,
         "bonfire_pos": (128 * 3, 128 * 3),
         "spawn_pos": (128 * 3, 128 * 5),
@@ -19,6 +20,7 @@ MAP_CONFIG = {
         "bgm": "audio/bgm/city_ruins.mp3",
         "bgm_start": 4.0,
         "name": "雪地1.2",
+        "glow_edges": ["right"],
         "has_bonfire": False,
         "show_title": False
     },
@@ -39,6 +41,7 @@ MAP_CONFIG = {
         "bgm": "audio/bgm/city_ruins.mp3",
         "bgm_start": 4.0,
         "name": "基地",
+        "glow_edges": ["right"],
         "has_bonfire": True,
         "bonfire_pos": (128 * 3, 128 * 4),
         "spawn_pos": (128 * 3, 128 * 4),
@@ -51,6 +54,7 @@ MAP_CONFIG = {
         "bgm": "audio/bgm/city_ruins.mp3",
         "bgm_start": 4.0,
         "name": "基地深处",
+        "glow_edges": ["right"],
         "has_bonfire": False,
         "show_title": False
     },
@@ -61,6 +65,7 @@ MAP_CONFIG = {
         "bgm": "audio/bgm/city_ruins.mp3",
         "bgm_start": 4.0,
         "name": "基地核心",
+        "glow_edges": ["right"],
         "has_bonfire": False,
         "show_title": False
     },
@@ -71,6 +76,7 @@ MAP_CONFIG = {
         "bgm": "audio/bgm/city_ruins.mp3",
         "bgm_start": 4.0,
         "name": "管道噩梦1",
+        "glow_edges": ["right"],
         "has_bonfire": False,
         "show_title": False
     },
@@ -96,6 +102,7 @@ MAP_CONFIG = {
         "bonfire_pos": (128 * 3, 128 * 3),
         "spawn_pos": (128 * 3, 128 * 4),
         "show_title": True,
+        "glow_edges": [{"edge": "right", "start": 0}, "bottom"],
         "open_top_rows": True
     },
     "pipe_nightmare_1_2": {
@@ -106,6 +113,7 @@ MAP_CONFIG = {
         "name": "管道大噩梦1-2",
         "has_bonfire": False,
         "show_title": False,
+        "glow_edges": [{"edge": "right", "start": 256, "end": 512}],
         "is_pipe_channel": True
     },
     "pipe_nightmare_2_1": {
@@ -118,6 +126,7 @@ MAP_CONFIG = {
         "name": "管道大噩梦2-1",
         "has_bonfire": False,
         "show_title": False,
+        "glow_edges": [{"edge": "bottom", "start": 256, "end": 512}],
         "is_vertical_pipe_channel": True,
         "open_top_rows": True
     },
@@ -131,6 +140,7 @@ MAP_CONFIG = {
         "has_bonfire": False,
         "show_title": False,
         "open_top_rows": True,
+        "glow_edges": [{"edge": "bottom", "start": 256, "end": 512}],
         "extra_obstacles": [
              # --- Boundary Limits ---
              # 1. Left Edge Return Restriction: Only Row 2,3 (Indices) allowed.
@@ -179,6 +189,7 @@ MAP_CONFIG = {
         "name": "管道大噩梦2-3",
         "has_bonfire": False,
         "show_title": False,
+        "glow_edges": ["bottom", {"edge": "left", "start": 0, "locked": True}],
         "open_top_rows": True
     },
     "pipe_nightmare_3_1": {
@@ -190,17 +201,19 @@ MAP_CONFIG = {
         "name": "管道大噩梦3-1",
         "has_bonfire": False,
         "show_title": False,
+        "glow_edges": [{"edge": "right", "start": 0}],
         "open_top_rows": True
     },
     "pipe_nightmare_2_2": {
         "folder": "maps/pipe_nightmare_2_2",
         "next": "pipe_nightmare_2_3",
-        "prev": None,
+        "prev": "pipe_ascent_1",  # 击败鬼武士后左出口解锁（→上升管道，通往地表）
         "down": "pipe_nightmare_3_2",
         "bgm": "audio/bgm/oldcore.mp3",
         "name": "管道大噩梦2-2",
         "has_bonfire": False,
         "show_title": False,
+        "glow_edges": [{"edge": "left", "boss": "pipe_2_2_boss"}],
         "open_top_rows": True,
         "extra_obstacles": [
             # Block Row 0 (Distant View)
@@ -218,6 +231,7 @@ MAP_CONFIG = {
         "name": "管道大噩梦3-2",
         "has_bonfire": False,
         "show_title": False,
+        "glow_edges": [{"edge": "top", "locked": True}],
         "open_top_rows": True
     },
     "pipe_nightmare_3_3": {
@@ -229,7 +243,55 @@ MAP_CONFIG = {
         "name": "管道大噩梦3-3",
         "has_bonfire": False,
         "show_title": False,
+        "glow_edges": ["top"],
         "open_top_rows": True
+    },
+    "star_sea_plaza": {
+        "folder": "maps/star_sea_plaza",
+        "next": "pipe_ascent_3",
+        "prev": None,
+        "down": None,
+        "up": None,
+        "bgm": "audio/bgm/oldcore.mp3",
+        "name": "星海广场",
+        "has_bonfire": False,
+        "show_title": True,
+        "glow_edges": [{"edge": "right", "start": 256}]
+    },
+    "pipe_ascent_1": {
+        "folder": "maps/pipe_nightmare_3", # 复用管道噩梦1-2的横向管道素材
+        "next": "pipe_nightmare_2_2",
+        "prev": "pipe_ascent_2",
+        "bgm": "audio/bgm/oldcore.mp3",
+        "name": "上升管道1",
+        "has_bonfire": False,
+        "show_title": False,
+        "glow_edges": [{"edge": "left", "start": 256, "end": 512}],
+        "is_pipe_channel": True
+    },
+    "pipe_ascent_2": {
+        "folder": "maps/pipe_nightmare_3", # 复用管道噩梦1-2的横向管道素材
+        "next": "pipe_ascent_1",
+        "prev": "pipe_ascent_3",
+        "bgm": "audio/bgm/oldcore.mp3",
+        "name": "阴湿管道",
+        "has_bonfire": True,
+        "bonfire_pos": (128 * 3, 128 * 3), # 屏幕正中间
+        "spawn_pos": (128 * 3, 128 * 3),
+        "show_title": False,
+        "glow_edges": [{"edge": "left", "start": 256, "end": 512}],
+        "is_pipe_channel": True
+    },
+    "pipe_ascent_3": {
+        "folder": "maps/pipe_nightmare_3", # 复用管道噩梦1-2的横向管道素材
+        "next": "pipe_ascent_2",
+        "prev": "star_sea_plaza",
+        "bgm": "audio/bgm/oldcore.mp3",
+        "name": "上升管道3",
+        "has_bonfire": False,
+        "show_title": False,
+        "glow_edges": [{"edge": "left", "start": 256, "end": 512}],
+        "is_pipe_channel": True
     },
     "base_4": {
         "folder": "maps/base_4",
@@ -238,6 +300,7 @@ MAP_CONFIG = {
         "bgm": "audio/bgm/city_ruins.mp3",
         "bgm_start": 4.0,
         "name": "基地深层",
+        "glow_edges": ["right"],
         "has_bonfire": False,
         "show_title": False
     },

@@ -280,3 +280,119 @@ class AreaTitle:
             
             # Draw Main Text
             self.screen.blit(text_surf, (current_x, current_y))
+
+
+class ExitGlow:
+    """出口「数据缝」微光 + 朝出口飘的数据粒子，标识可通行方向。
+
+    edge: "left" / "right" / "top" / "bottom"
+    start, end: 该边上可通行段的起止坐标（6x6 地图无滚动，屏幕坐标==世界坐标）
+    locked: True 显示红色（锁门，需液氮核心），否则蓝青色
+    """
+    GLOW_COLOR = (0, 200, 255)     # 蓝青（可走出口）
+    LOCKED_COLOR = (255, 80, 80)   # 红（锁门，未解锁）
+    THICKNESS = 40                 # 微光向内延伸的宽度（px）
+    MAX_ALPHA = 90                 # 普通出口最亮处的 alpha
+    LOCKED_MAX_ALPHA = 170         # 锁门更亮，作为醒目的警告
+
+    def __init__(self, edge, start=0, end=SCREEN_HEIGHT, locked=False):
+        self.edge = edge
+        self.start = start
+        self.end = end
+        self.locked = locked
+        self.color = self.LOCKED_COLOR if locked else self.GLOW_COLOR
+        self.max_alpha = self.LOCKED_MAX_ALPHA if locked else self.MAX_ALPHA
+        self.timer = 0.0
+        self.particles = []
+        self.max_particles = 36
+        self.glow_surface = self._build_glow()
+
+    def _build_glow(self):
+        length = self.end - self.start
+        if self.edge in ("right", "left"):
+            w, h = self.THICKNESS, length
+        else:
+            w, h = length, self.THICKNESS
+
+        surf = pygame.Surface((w, h), pygame.SRCALPHA)
+        for i in range(self.THICKNESS):
+            t = (i + 1) / self.THICKNESS          # 0..1，越靠近边缘越大
+            alpha = int(self.max_alpha * t * t)   # 二次衰减，边缘最亮、向内柔和
+            color = self.color + (alpha,)
+            if self.edge == "right":
+                pygame.draw.line(surf, color, (i, 0), (i, h))
+            elif self.edge == "left":
+                pygame.draw.line(surf, color, (self.THICKNESS - 1 - i, 0), (self.THICKNESS - 1 - i, h))
+            elif self.edge == "bottom":
+                pygame.draw.line(surf, color, (0, i), (w, i))
+            else:  # top
+                pygame.draw.line(surf, color, (0, self.THICKNESS - 1 - i), (w, self.THICKNESS - 1 - i))
+        return surf
+
+    def _pos(self):
+        if self.edge == "right":
+            return (SCREEN_WIDTH - self.THICKNESS, self.start)
+        if self.edge == "left":
+            return (0, self.start)
+        if self.edge == "bottom":
+            return (self.start, SCREEN_HEIGHT - self.THICKNESS)
+        return (self.start, 0)  # top
+
+    def _spawn_particle(self):
+        size = random.randint(1, 3)
+        img = pygame.Surface((size, size), pygame.SRCALPHA)
+        img.fill(self.color)
+        if self.edge in ("right", "left"):
+            x = random.randint(0, SCREEN_WIDTH)
+            y = random.randint(self.start, self.end)
+        else:
+            x = random.randint(self.start, self.end)
+            y = random.randint(0, SCREEN_HEIGHT)
+        return {
+            "x": float(x), "y": float(y), "img": img,
+            "speed": random.uniform(0.8, 2.2),
+            "phase": random.uniform(0, 6.28),
+            "base_alpha": random.randint(40, 90),
+        }
+
+    def update(self):
+        self.timer += 0.05
+        while len(self.particles) < self.max_particles:
+            self.particles.append(self._spawn_particle())
+
+        for p in self.particles:
+            if self.edge == "right":
+                p["x"] += p["speed"]
+                if p["x"] > SCREEN_WIDTH:
+                    p["x"] = 0.0
+                    p["y"] = float(random.randint(self.start, self.end))
+            elif self.edge == "left":
+                p["x"] -= p["speed"]
+                if p["x"] < 0:
+                    p["x"] = float(SCREEN_WIDTH)
+                    p["y"] = float(random.randint(self.start, self.end))
+            elif self.edge == "bottom":
+                p["y"] += p["speed"]
+                if p["y"] > SCREEN_HEIGHT:
+                    p["y"] = 0.0
+                    p["x"] = float(random.randint(self.start, self.end))
+            else:  # top
+                p["y"] -= p["speed"]
+                if p["y"] < 0:
+                    p["y"] = float(SCREEN_HEIGHT)
+                    p["x"] = float(random.randint(self.start, self.end))
+
+    def draw(self, screen):
+        surf = self.glow_surface
+        if self.locked:
+            # 锁门呼吸闪烁，吸引注意；拿到核心解锁后自动停（变稳定蓝光）
+            pulse = int(200 + 55 * math.sin(self.timer * 2))
+            surf.set_alpha(pulse)
+        else:
+            surf.set_alpha(255)
+        screen.blit(surf, self._pos())
+        for p in self.particles:
+            alpha = int(p["base_alpha"] * (0.5 + 0.5 * math.sin(self.timer * 2 + p["phase"])))
+            if alpha > 0:
+                p["img"].set_alpha(alpha)
+                screen.blit(p["img"], (int(p["x"]), int(p["y"])))

@@ -111,6 +111,10 @@ class BattleManager(BulletSpawnMixin, MenuMixin, ShieldMixin, RenderMixin):
         self.death_timer = 0
         self.DEATH_FREEZE_DURATION = 120 # 2 seconds at 60 FPS
         self.death_triggered = False # Prevent double death processing
+
+        # FailureEnemy EMP State
+        self.game_state = None # 由 Game 注入，用于读取/写入失败之作的秒杀机制是否已瓦解
+        self.failure_emp_used = False
         
         self.load_common_resources()
 
@@ -243,10 +247,19 @@ class BattleManager(BulletSpawnMixin, MenuMixin, ShieldMixin, RenderMixin):
         # Player MUST go first (PHASE_MENU is already set above)
         # Death logic moved to handle_enemy_turn / update
         if "failure_enemy" in self.enemy_data.get("id", ""):
+            # 读取持久化的「电磁脉冲已使用」状态：已瓦解则本场不再有秒杀
+            self.failure_emp_used = False
+            if self.game_state is not None:
+                self.failure_emp_used = getattr(self.game_state, "failure_emp_used", False)
+
             # Ensure normal start, death happens later
-            self.death_sequence_active = False 
+            self.death_sequence_active = False
             self.death_timer = 0
-            pass
+
+            if not self.failure_emp_used:
+                self.dialog_text = "* 失败之作的杀意如实质般压来……只有电磁脉冲能瓦解它的秒杀机制。"
+            else:
+                self.dialog_text = "* 失败之作 阻挡了你的去路。"
 
     def load_enemy_visuals(self):
         self.enemy_frames = []
@@ -579,8 +592,10 @@ class BattleManager(BulletSpawnMixin, MenuMixin, ShieldMixin, RenderMixin):
         
         # FailureEnemy Special Death Logic (Triggered on Enemy Turn Start)
         if "failure_enemy" in self.enemy_data.get("id", ""):
-            self.handle_player_death()
-            return
+            # 若玩家已用电磁脉冲瓦解其秒杀机制，则不再即死，转而走普通攻击
+            if not self.failure_emp_used:
+                self.handle_player_death()
+                return
 
         if "变量" in enemy_name:
             if random.random() < 0.5:
