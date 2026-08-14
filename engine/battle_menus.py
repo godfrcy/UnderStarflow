@@ -1,0 +1,299 @@
+import pygame
+import random
+import math
+from engine.utils import resource_path, get_font
+from engine.config import *
+
+
+class MenuMixin:
+    def confirm_menu_selection(self):
+        if self.selected_btn_idx == 0: # FIGHT
+            self.start_qte()
+        elif self.selected_btn_idx == 1: # ACT
+            self.current_phase = self.PHASE_ACT_SELECT
+            self.act_selection_idx = 0
+        elif self.selected_btn_idx == 2: # ITEM
+            self.current_phase = self.PHASE_ITEM_SELECT
+            self.item_selection_idx = 0
+        elif self.selected_btn_idx == 3: # MERCY
+            self.current_phase = self.PHASE_MERCY_SELECT
+            self.mercy_selection_idx = 0
+
+    def start_qte(self):
+        self.current_phase = self.PHASE_QTE
+        start_side = random.choice(["left", "right"])
+        qte_speed_val = 8
+        
+        if start_side == "left":
+            self.qte_needle_x = self.qte_rect.left
+            self.qte_needle_speed = qte_speed_val
+        else:
+            self.qte_needle_x = self.qte_rect.right
+            self.qte_needle_speed = -qte_speed_val
+            
+        # Optimization: Increase area by 10% (80 -> 88)
+        zone_width = 88
+        
+        # Limit to middle 70% (15% margin on each side)
+        # This prevents the zone from being too close to the start/end points
+        margin = int(self.qte_rect.width * 0.15)
+        
+        min_x = self.qte_rect.left + margin
+        max_x = self.qte_rect.right - margin - zone_width
+        
+        # Safety check
+        if max_x < min_x:
+            max_x = min_x
+            
+        zone_x = random.randint(min_x, max_x)
+        self.qte_target_zone = pygame.Rect(zone_x, self.qte_rect.y, zone_width, self.qte_rect.height)
+        
+        perfect_width = 24
+        perfect_x = zone_x + (zone_width - perfect_width) // 2
+        self.qte_perfect_zone = pygame.Rect(perfect_x, self.qte_rect.y, perfect_width, self.qte_rect.height)
+
+    def resolve_qte(self):
+        hit_x = self.qte_needle_x
+        needle_rect = pygame.Rect(int(hit_x), self.qte_rect.y, 4, self.qte_rect.height)
+        
+        if needle_rect.colliderect(self.qte_perfect_zone):
+            self.damage_multiplier = 1.5
+            if self.calibration_sfx: self.calibration_sfx.play()
+        elif needle_rect.colliderect(self.qte_target_zone):
+            self.damage_multiplier = 1.0
+            if self.calibration_sfx: self.calibration_sfx.play()
+        else:
+            self.damage_multiplier = 0.0
+            
+        base_damage = 10
+        if self.player and hasattr(self.player, "attack"):
+            base_damage = self.player.attack
+            
+        final_damage = int(base_damage * self.damage_multiplier)
+        
+        if final_damage > 0:
+            self.enemy_hp -= final_damage
+            self.damage_popups.append({
+                'val': str(final_damage),
+                'color': (255, 0, 0),
+                'pos': [self.enemy_rect.centerx, self.enemy_rect.top - 30],
+                'timer': 90
+            })
+        else:
+            self.damage_popups.append({
+                'val': "MISS",
+                'color': (150, 150, 150),
+                'pos': [self.enemy_rect.centerx, self.enemy_rect.top - 30],
+                'timer': 90
+            })
+            
+        if self.enemy_hp < 0: self.enemy_hp = 0
+        
+        self.is_attack_anim = True
+        self.current_phase = self.PHASE_PLAYER_ANIM
+        self.next_phase_after_anim = self.PHASE_ENEMY_TURN
+        self.action_timer = 60
+
+    def get_act_options(self):
+        return ["取消", "骇入", "逃跑"]
+
+    def handle_act_input(self, event):
+        display_actions = self.get_act_options()
+        
+        if event.key == pygame.K_x or event.key == pygame.K_ESCAPE:
+            self.current_phase = self.PHASE_MENU
+            self.act_selection_idx = 0
+        elif event.key == pygame.K_LEFT or event.key == pygame.K_a:
+            self.act_selection_idx = (self.act_selection_idx - 1) % len(display_actions)
+        elif event.key == pygame.K_RIGHT or event.key == pygame.K_d:
+            self.act_selection_idx = (self.act_selection_idx + 1) % len(display_actions)
+        elif event.key == pygame.K_UP or event.key == pygame.K_w:
+            self.act_selection_idx = (self.act_selection_idx - 2) % len(display_actions)
+        elif event.key == pygame.K_DOWN or event.key == pygame.K_s:
+            self.act_selection_idx = (self.act_selection_idx + 2) % len(display_actions)
+        elif event.key == pygame.K_z or event.key == pygame.K_RETURN or event.key == pygame.K_SPACE:
+            selected_act = display_actions[self.act_selection_idx]
+            if selected_act == "取消":
+                self.current_phase = self.PHASE_MENU
+                self.act_selection_idx = 0
+            elif selected_act == "骇入":
+                self.do_hack()
+            elif selected_act == "逃跑":
+                self.action_text = "* 你逃跑了。"
+                self.current_phase = self.PHASE_PLAYER_ANIM
+                self.should_exit_battle = True
+                self.action_timer = 90
+                self.player.battle_cooldown = 180
+                self.player.rect.y += 128
+            else:
+                 self.action_text = f"* 你进行了 {selected_act}。"
+                 self.current_phase = self.PHASE_PLAYER_ANIM
+                 self.next_phase_after_anim = self.PHASE_ENEMY_TURN
+                 self.action_timer = 60
+
+    def do_hack(self):
+        if self.hack_count < 5:
+            self.hack_count += 1
+            # Increased slow-down effect from 10% to 15% per hack based on user feedback
+            factor = 0.85 
+            self.bullet_speed_multiplier *= factor
+            for b in self.bullets:
+                if hasattr(b, 'vx'): b.vx *= factor
+                if hasattr(b, 'vy'): b.vy *= factor
+                if hasattr(b, 'speed'): b.speed *= factor
+                # Fix for YellowBullet in WAIT state
+                if hasattr(b, 'target_vx'): b.target_vx *= factor
+                if hasattr(b, 'target_vy'): b.target_vy *= factor
+            
+            # Also slow down shield arrows if active
+            if hasattr(self, 'shield_arrows'):
+                for arrow in self.shield_arrows:
+                    if 'speed' in arrow:
+                        arrow['speed'] *= factor
+                        
+            self.action_text = f"* 骇入成功！弹幕速度降低15% (剩余次数: {5 - self.hack_count})"
+        else:
+            self.action_text = "* 骇入次数已耗尽。"
+        
+        self.current_phase = self.PHASE_PLAYER_ANIM
+        self.next_phase_after_anim = self.PHASE_ENEMY_TURN
+        self.action_timer = 60
+
+    def handle_item_input(self, event):
+        # Consolidate inventory to merge duplicates before filtering
+        if hasattr(self.player, 'consolidate_inventory'):
+            self.player.consolidate_inventory()
+
+        # Filter consumables only (exclude materials/key_items)
+        # Also include "battery" type as "投掷电池" is defined as battery type in some places
+        consumables = [item for item in self.player.inventory if item.get("type") in ["consumable", "battery"]]
+        
+        display_names = []
+        for item in consumables:
+            name = item.get("name", "Unknown")
+            count = item.get("count", 1)
+            if count > 1:
+                display_names.append(f"{name} x{count}")
+            else:
+                display_names.append(name)
+        
+        display_items = ["取消", f"能量电池 x{self.player.battery_count}"] + display_names
+        
+        if event.key == pygame.K_x or event.key == pygame.K_ESCAPE:
+            self.current_phase = self.PHASE_MENU
+            self.item_selection_idx = 0
+        elif event.key == pygame.K_LEFT or event.key == pygame.K_a:
+            self.item_selection_idx = (self.item_selection_idx - 1) % len(display_items)
+        elif event.key == pygame.K_RIGHT or event.key == pygame.K_d:
+            self.item_selection_idx = (self.item_selection_idx + 1) % len(display_items)
+        elif event.key == pygame.K_UP or event.key == pygame.K_w:
+            self.item_selection_idx = (self.item_selection_idx - 2) % len(display_items)
+        elif event.key == pygame.K_DOWN or event.key == pygame.K_s:
+            self.item_selection_idx = (self.item_selection_idx + 2) % len(display_items)
+        elif event.key == pygame.K_z or event.key == pygame.K_RETURN or event.key == pygame.K_SPACE:
+            self.use_item(display_items, consumables)
+
+    def use_item(self, display_items, consumables_list=None):
+        if self.item_selection_idx == 0: # Cancel
+            self.current_phase = self.PHASE_MENU
+            self.item_selection_idx = 0
+        elif self.item_selection_idx == 1: # Battery
+            if self.player.battery_count > 0:
+                if self.player.hp < self.player.max_hp:
+                    self.player.hp = min(self.player.hp + 10, self.player.max_hp)
+                    self.player.battery_count -= 1
+                    self.action_text = "* 你使用了能量电池。 HP +10。"
+                    self.current_phase = self.PHASE_PLAYER_ANIM
+                    self.next_phase_after_anim = self.PHASE_ENEMY_TURN
+                    self.action_timer = 60
+                    self.item_selection_idx = 0
+                else:
+                    self.action_text = "* 你的HP已满。"
+                    self.current_phase = self.PHASE_PLAYER_ANIM
+                    self.next_phase_after_anim = self.PHASE_MENU
+                    self.action_timer = 60
+            else:
+                self.action_text = "* 你没有能量电池了。"
+                self.current_phase = self.PHASE_PLAYER_ANIM
+                self.next_phase_after_anim = self.PHASE_MENU
+                self.action_timer = 60
+        else:
+            # Other items from filtered consumables list
+            real_item_idx = self.item_selection_idx - 2
+            
+            # Use passed consumables list if available, otherwise fallback
+            target_list = consumables_list if consumables_list is not None else self.player.inventory
+            
+            if 0 <= real_item_idx < len(target_list):
+                item = target_list[real_item_idx]
+                item_name = item.get("name", "Unknown")
+                
+                # Use Logic
+                if item_name == "投掷电池":
+                     damage = 20
+                     self.enemy_hp -= damage
+                     self.damage_popups.append({
+                        'val': str(damage),
+                        'color': (255, 0, 0),
+                        'pos': [self.enemy_rect.centerx, self.enemy_rect.top - 30],
+                        'timer': 90
+                     })
+                     if self.enemy_hp < 0: self.enemy_hp = 0
+                     
+                     # Decrement/Remove
+                     if hasattr(self.player, 'remove_item'):
+                         self.player.remove_item(item_name, 1)
+                     else:
+                         if item in self.player.inventory:
+                             self.player.inventory.remove(item)
+                         
+                     self.action_text = f"* 你投掷了电池！对敌人造成了 {damage} 点伤害。"
+                     
+                     self.current_phase = self.PHASE_PLAYER_ANIM
+                     self.next_phase_after_anim = self.PHASE_ENEMY_TURN
+                     self.action_timer = 90
+                     self.item_selection_idx = 0
+                else:
+                    self.action_text = f"* 使用了 {item_name}，但什么也没发生。"
+                    self.current_phase = self.PHASE_PLAYER_ANIM
+                    self.next_phase_after_anim = self.PHASE_MENU
+                    self.action_timer = 60
+                    self.item_selection_idx = 0
+
+    def handle_mercy_input(self, event):
+        display_mercy = ["取消", "宽恕"]
+        if event.key == pygame.K_x or event.key == pygame.K_ESCAPE:
+            self.current_phase = self.PHASE_MENU
+            self.mercy_selection_idx = 0
+        elif event.key in [pygame.K_LEFT, pygame.K_a, pygame.K_RIGHT, pygame.K_d]:
+             self.mercy_selection_idx = (self.mercy_selection_idx + 1) % 2
+        elif event.key in [pygame.K_z, pygame.K_RETURN, pygame.K_SPACE]:
+            if self.mercy_selection_idx == 0:
+                self.current_phase = self.PHASE_MENU
+                self.mercy_selection_idx = 0
+            else:
+                self.action_text = f"* 你原谅了 {self.enemy_data.get('name', '敌人')}。"
+                self.current_phase = self.PHASE_PLAYER_ANIM
+                self.should_exit_battle = True
+                self.action_timer = 90
+                self.player.battle_cooldown = 180
+                self.player.rect.y += 128
+
+    def handle_flee_input(self, event):
+        display_flee = ["取消", "逃跑"]
+        if event.key == pygame.K_x or event.key == pygame.K_ESCAPE:
+            self.current_phase = self.PHASE_MENU
+            self.flee_selection_idx = 0
+        elif event.key in [pygame.K_LEFT, pygame.K_a, pygame.K_RIGHT, pygame.K_d]:
+             self.flee_selection_idx = (self.flee_selection_idx + 1) % 2
+        elif event.key in [pygame.K_z, pygame.K_RETURN, pygame.K_SPACE]:
+            if self.flee_selection_idx == 0:
+                self.current_phase = self.PHASE_MENU
+                self.flee_selection_idx = 0
+            else:
+                self.action_text = "* 你逃跑了。"
+                self.current_phase = self.PHASE_PLAYER_ANIM
+                self.should_exit_battle = True
+                self.action_timer = 90
+                self.player.battle_cooldown = 180
+                self.player.rect.y += 128
