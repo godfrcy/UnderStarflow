@@ -13,6 +13,9 @@ from engine.game_state import GameState
 from engine.battle_system import BattleManager
 from engine.camera import Camera
 from engine.tile_manager import TileManager
+from engine.map_data import MAP_CONFIG
+from engine.enemy_data import BATTLE_DATA, ABANDONED_ROBOT_DATA
+from engine.save_system import save_game, load_game
 from entities.player import Player
 from entities.enemies import OverworldEnemy, Bonfire, FailureEnemy
 from entities.props import Prop
@@ -20,371 +23,6 @@ from ui.menus import TitleScreen, ConfirmDialog, BonfireMenu, TeleportMenu, Paus
 from ui.dialogue import DialogueSystem
 from ui.effects import SnowFlake, AreaTitle, DataDust, FogGate, FogWall
 from ui.atmosphere import PipeAtmosphere, PulseAtmosphere, FogMaze
-
-# --- Map Configuration ---
-MAP_CONFIG = {
-    "start": {
-        "folder": "maps/snow_start",
-        "next": "snow_1_2",
-        "prev": None,
-        "bgm": "audio/bgm/city_ruins.mp3",
-        "bgm_start": 4.0,
-        "name": "无主雪地",
-        "has_bonfire": True,
-        "bonfire_pos": (128 * 3, 128 * 3),
-        "spawn_pos": (128 * 3, 128 * 5),
-        "show_title": True
-    },
-    "snow_1_2": {
-        "folder": "maps/snow_1_2",
-        "next": "snow_1_3",
-        "prev": "start",
-        "bgm": "audio/bgm/city_ruins.mp3",
-        "bgm_start": 4.0,
-        "name": "雪地1.2",
-        "has_bonfire": False,
-        "show_title": False
-    },
-    "snow_1_3": {
-        "folder": "maps/snow_1_3",
-        "next": None,
-        "prev": "snow_1_2",
-        "bgm": "audio/bgm/city_ruins.mp3",
-        "bgm_start": 4.0,
-        "name": "雪地1.3",
-        "has_bonfire": False,
-        "show_title": False
-    },
-    "base_1": {
-        "folder": "maps/base_1",
-        "next": "base_2",
-        "prev": None,
-        "bgm": "audio/bgm/city_ruins.mp3",
-        "bgm_start": 4.0,
-        "name": "基地",
-        "has_bonfire": True,
-        "bonfire_pos": (128 * 3, 128 * 4),
-        "spawn_pos": (128 * 3, 128 * 4),
-        "show_title": True
-    },
-    "base_2": {
-        "folder": "maps/base_2",
-        "next": "base_3",
-        "prev": "base_1",
-        "bgm": "audio/bgm/city_ruins.mp3",
-        "bgm_start": 4.0,
-        "name": "基地深处",
-        "has_bonfire": False,
-        "show_title": False
-    },
-    "base_3": {
-        "folder": "maps/base_3",
-        "next": "base_4",
-        "prev": "base_2",
-        "bgm": "audio/bgm/city_ruins.mp3",
-        "bgm_start": 4.0,
-        "name": "基地核心",
-        "has_bonfire": False,
-        "show_title": False
-    },
-    "pipe_nightmare_1": {
-        "folder": "maps/pipe_nightmare_1",
-        "next": "pipe_nightmare_2",
-        "prev": "base_5",
-        "bgm": "audio/bgm/city_ruins.mp3",
-        "bgm_start": 4.0,
-        "name": "管道噩梦1",
-        "has_bonfire": False,
-        "show_title": False
-    },
-    "pipe_nightmare_2": {
-        "folder": "maps/pipe_nightmare_2",
-        "next": None,
-        "prev": "pipe_nightmare_1",
-        "down": None, # Removed connection to pipe_nightmare_3 to avoid skip
-        "bgm": "audio/bgm/city_ruins.mp3",
-        "bgm_start": 4.0,
-        "name": "管道噩梦2",
-        "has_bonfire": False,
-        "show_title": False
-    },
-    "pipe_nightmare_3": {
-        "folder": "maps/pipe_nightmare_3",
-        "next": "pipe_nightmare_1_2",
-        "prev": None,
-        "down": "pipe_nightmare_2_1",
-        "bgm": "audio/bgm/oldcore.mp3",
-        "name": "管道噩梦",
-        "has_bonfire": True,
-        "bonfire_pos": (128 * 3, 128 * 3),
-        "spawn_pos": (128 * 3, 128 * 4),
-        "show_title": True,
-        "open_top_rows": True
-    },
-    "pipe_nightmare_1_2": {
-        "folder": "maps/pipe_nightmare_3", # Use Pipe 3 Assets
-        "next": "pipe_nightmare_1_3",
-        "prev": "pipe_nightmare_3",
-        "bgm": "audio/bgm/oldcore.mp3",
-        "name": "管道大噩梦1-2",
-        "has_bonfire": False,
-        "show_title": False,
-        "is_pipe_channel": True
-    },
-    "pipe_nightmare_2_1": {
-        "folder": "maps/pipe_nightmare_3", # Use Pipe 3 Assets (Vertical)
-        "next": None,
-        "prev": None,
-        "up": "pipe_nightmare_3",
-        "down": "pipe_nightmare_3_1",
-        "bgm": "audio/bgm/oldcore.mp3",
-        "name": "管道大噩梦2-1",
-        "has_bonfire": False,
-        "show_title": False,
-        "is_vertical_pipe_channel": True,
-        "open_top_rows": True
-    },
-    "pipe_nightmare_1_3": {
-        "folder": "maps/pipe_nightmare_3", # Reuse pipe tiles (gray_floor was legacy, deleted)
-        "next": None,
-        "prev": "pipe_nightmare_1_2",
-        "down": "pipe_nightmare_2_3",
-        "bgm": "audio/bgm/oldcore.mp3",
-        "name": "管道大噩梦1-3",
-        "has_bonfire": False,
-        "show_title": False,
-        "open_top_rows": True,
-        "extra_obstacles": [
-             # --- Boundary Limits ---
-             # 1. Left Edge Return Restriction: Only Row 2,3 (Indices) allowed.
-             # Block return at (-1,0), (-1,1) and (-1,4), (-1,5)
-             (-1, 0), (-1, 1), (-1, 4), (-1, 5),
-
-             # 2. Bottom Exit Restriction: Only Col 2,3 allowed.
-             # Block exit at (0,6), (1,6), (4,6), (5,6)
-             (0, 6), (1, 6), (4, 6), (5, 6),
-
-             # --- Maze Walls ---
-             # Force Path: Left -> Top -> Right -> Bottom -> Inner Hook -> Exit
-             
-             # 1. Block Center Upper Rows (Force Top Perimeter)
-             (1, 1), (2, 1), (3, 1), (4, 1),
-             (1, 2), (2, 2), (3, 2), (4, 2),
-
-             # 2. Block Center Lower (Guide Hook)
-             # Block (1,3), (1,4) to wall off left side
-             (1, 3), (1, 4),
-             
-             # Block Bottom-Left Path (Prevent Shortcut)
-             (0, 4), (0, 5), (1, 5),
-
-             # Block (3,5) Removed to open exit path
-             # Block Bottom-Right corners to force exit only at Cols 2,3 (Indices)
-             (4, 5), (5, 5),
-             
-             # Path Trace:
-             # Start (0,2)/(0,3) -> Up to (0,0)
-             # Right along Top (0,0)->(5,0)
-             # Down along Right (5,0)->(5,5)
-             # Left to (4,5)
-             # Up to (4,3) [Avoids (3,5) block]
-             # Left to (2,3)
-             # Down to (2,5) -> Exit!
-        ]
-    },
-    "pipe_nightmare_2_3": {
-        "folder": "maps/pipe_nightmare_3", # Use Pipe 3 Assets (Bonfire style)
-        "next": None,
-        "down": "pipe_nightmare_3_3",
-        "prev": "pipe_nightmare_2_2",
-        "up": "pipe_nightmare_1_3",
-        "bgm": "audio/bgm/oldcore.mp3",
-        "name": "管道大噩梦2-3",
-        "has_bonfire": False,
-        "show_title": False,
-        "open_top_rows": True
-    },
-    "pipe_nightmare_3_1": {
-        "folder": "maps/pipe_nightmare_3", # Consistent assets
-        "next": "pipe_nightmare_3_2",
-        "prev": None,
-        "up": "pipe_nightmare_2_1",
-        "bgm": "audio/bgm/oldcore.mp3",
-        "name": "管道大噩梦3-1",
-        "has_bonfire": False,
-        "show_title": False,
-        "open_top_rows": True
-    },
-    "pipe_nightmare_2_2": {
-        "folder": "maps/pipe_nightmare_2_2",
-        "next": "pipe_nightmare_2_3",
-        "prev": None,
-        "down": "pipe_nightmare_3_2",
-        "bgm": "audio/bgm/oldcore.mp3",
-        "name": "管道大噩梦2-2",
-        "has_bonfire": False,
-        "show_title": False,
-        "open_top_rows": True,
-        "extra_obstacles": [
-            # Block Row 0 (Distant View)
-            (0, 0), (1, 0), (2, 0), (3, 0), (4, 0), (5, 0),
-            # Block Row 1 (Distant View)
-            (0, 1), (1, 1), (2, 1), (3, 1), (4, 1), (5, 1)
-        ]
-    },
-    "pipe_nightmare_3_2": {
-        "folder": "maps/pipe_nightmare_3_2",
-        "next": None,
-        "prev": "pipe_nightmare_3_1",
-        "up": "pipe_nightmare_2_2", # Connects to 2-2 (implied) or just placeholder
-        "bgm": "audio/bgm/oldcore.mp3",
-        "name": "管道大噩梦3-2",
-        "has_bonfire": False,
-        "show_title": False,
-        "open_top_rows": True
-    },
-    "pipe_nightmare_3_3": {
-        "folder": "maps/pipe_nightmare_3_3",
-        "next": None,
-        "prev": None,
-        "up": "pipe_nightmare_2_3",
-        "bgm": "audio/bgm/oldcore.mp3",
-        "name": "管道大噩梦3-3",
-        "has_bonfire": False,
-        "show_title": False,
-        "open_top_rows": True
-    },
-    "base_4": {
-        "folder": "maps/base_4",
-        "next": "base_5",
-        "prev": "base_3",
-        "bgm": "audio/bgm/city_ruins.mp3",
-        "bgm_start": 4.0,
-        "name": "基地深层",
-        "has_bonfire": False,
-        "show_title": False
-    },
-    "base_5": {
-        "folder": "maps/base_5",
-        "next": "pipe_nightmare_1",
-        "prev": "base_4",
-        "bgm": "audio/bgm/city_ruins.mp3",
-        "bgm_start": 4.0,
-        "name": "基地裂隙",
-        "has_bonfire": False,
-        "show_title": False,
-        "extra_obstacles": [
-            (4, 2), (5, 2), # Row 3 (Index 2), Cols 5,6 (Index 4,5)
-            (4, 3), (5, 3)  # Row 4 (Index 3), Cols 5,6 (Index 4,5)
-        ]
-    }
-}
-
-# --- Save/Load System ---
-
-def save_game(player, game_state, current_map_id):
-    """
-    Save game data to savegame.json using atomic write to prevent corruption.
-    """
-    data = {
-        "player": {
-            "hp": player.hp,
-            "max_hp": player.max_hp,
-            "level": getattr(player, "level", 1),
-            "exp": getattr(player, "exp", 0),
-            "max_exp": getattr(player, "max_exp", 100),
-            "attack": getattr(player, "attack", 10),
-            "x": player.rect.x,
-            "y": player.rect.y,
-            "inventory": player.inventory,
-            "battery_count": player.battery_count
-        },
-        "game_state": {
-            "current_era": game_state.current_era,
-            "sync_rate": game_state.sync_rate,
-            "show_terminal_dialog": game_state.show_terminal_dialog,
-            "activated_bonfires": game_state.activated_bonfires,
-            "collected_items": game_state.collected_items,
-            "cleared_bosses": game_state.cleared_bosses,
-            "last_rest_map_id": game_state.last_rest_map_id,
-            "last_rest_pos": game_state.last_rest_pos,
-            "current_map_id": current_map_id,
-            "last_entry_type": game_state.last_entry_type
-        }
-    }
-    
-    target_file = "savegame.json"
-    temp_file = f"{target_file}.tmp"
-    
-    try:
-        with open(temp_file, "w", encoding='utf-8') as f:
-            json.dump(data, f, indent=4, ensure_ascii=False)
-            f.flush()
-            os.fsync(f.fileno())
-        
-        # Atomic replace
-        if os.path.exists(target_file):
-            os.remove(target_file)
-        os.rename(temp_file, target_file)
-        
-        print("Game Saved Successfully.")
-        return True
-    except Exception as e:
-        print(f"Failed to save game: {e}")
-        if os.path.exists(temp_file):
-            os.remove(temp_file)
-        return False
-
-def load_game(player, game_state):
-    """
-    Load game data from savegame.json with error handling.
-    Returns (success, map_id)
-    """
-    if not os.path.exists("savegame.json"):
-        print("No save file found.")
-        return False, "start"
-        
-    try:
-        with open("savegame.json", "r", encoding='utf-8') as f:
-            data = json.load(f)
-            
-        # Validate critical fields
-        if "player" not in data or "game_state" not in data:
-            raise ValueError("Invalid save file structure")
-            
-        p_data = data["player"]
-        player.hp = p_data.get("hp", player.max_hp)
-        player.max_hp = p_data.get("max_hp", player.max_hp)
-        player.level = p_data.get("level", 1)
-        player.exp = p_data.get("exp", 0)
-        player.max_exp = p_data.get("max_exp", 100)
-        player.attack = p_data.get("attack", 10)
-        player.rect.x = p_data.get("x", 128 * 2)
-        player.rect.y = p_data.get("y", 128 * 5)
-        player.inventory = p_data.get("inventory", [])
-        player.battery_count = p_data.get("battery_count", 3)
-        
-        g_data = data["game_state"]
-        game_state.current_era = g_data.get("current_era", "Ice_Wind_Era")
-        game_state.sync_rate = g_data.get("sync_rate", 50)
-        game_state.show_terminal_dialog = g_data.get("show_terminal_dialog", False)
-        game_state.activated_bonfires = g_data.get("activated_bonfires", ["start"])
-        game_state.collected_items = g_data.get("collected_items", [])
-        game_state.cleared_bosses = g_data.get("cleared_bosses", [])
-        game_state.last_rest_map_id = g_data.get("last_rest_map_id", "start")
-        game_state.last_rest_pos = tuple(g_data.get("last_rest_pos", (128 * 3, 128 * 5)))
-        game_state.last_entry_type = g_data.get("last_entry_type", None)
-        map_id = g_data.get("current_map_id", "start")
-        
-        print("Game Loaded Successfully.")
-        return True, map_id
-        
-    except json.JSONDecodeError:
-        print("Error: Save file is corrupted (JSON Decode Error).")
-        return False, "start"
-    except Exception as e:
-        print(f"Failed to load game: {e}")
-        return False, "start"
 
 # --- Main Game Loop ---
 
@@ -527,17 +165,7 @@ def main():
                  enemy.vision_range = 300
                  enemy.chase_speed = 2.0
                  
-                 enemy.battle_data = {
-                     "id": robot_id_1_3,
-                     "name": "废弃机器人",
-                     "hp": 80,
-                    "skills": ["escape_dust"],
-                    "acts": ["观察"],
-                     "image_folder": "characters/enemies/abandoned_robot",
-                     "image_prefix": "abandoned_robot",
-                     "is_grid": True,
-                     "bgm": "audio/bgm/hi.mp3"
-                 }
+                 enemy.battle_data = dict(ABANDONED_ROBOT_DATA, id=robot_id_1_3)
                  enemies_group.add(enemy)
         
         # Pipe Nightmare 2-2: Ghost Samurai Boss & Fog Gates
@@ -560,18 +188,7 @@ def main():
             # Pos: Third row (Index 2), Second col (Index 1) -> 128*1, 128*2
             if "pipe_2_2_boss" not in game_state.cleared_bosses:
                 enemy = OverworldEnemy(128 * 2, 128 * 3, "characters/enemies/samurai_ghost", "samurai_ghost", is_grid=True, custom_size=(141, 154))
-                enemy.battle_data = {
-                    "id": "pipe_2_2_boss",
-                    "boss_id": "pipe_2_2_boss",
-                    "name": "鬼武士",
-                    "hp": 120,
-                    "skills": ["dark_orb", "samurai_fire_walls", "samurai_gravity_jump"], # New Skills
-                    "acts": ["看破"],
-                    "image_folder": "characters/enemies/samurai_ghost",
-                    "image_prefix": "samurai_ghost",
-                    "is_grid": True,
-                    "bgm": "audio/bgm/brutal.mp3"
-                }
+                enemy.battle_data = dict(BATTLE_DATA["ghost_samurai"])
                 enemies_group.add(enemy)
 
         else:
@@ -599,17 +216,7 @@ def main():
             if enemy_id not in game_state.temp_killed_enemies:
                 # Point to the FILE, not a folder. OverworldEnemy now handles files.
                 enemy = OverworldEnemy(128 * 4, 128 * 2, "characters/enemies/berserk_variable/berserk_variable.png", "variable", is_grid=True)
-                enemy.battle_data = {
-                    "id": enemy_id,
-                    "name": "变量",
-                    "hp": 50,
-                    "skills": ["laser", "cube", "random_particles"],
-                    "acts": ["嘲讽", "观察"],
-                    "image_folder": "characters/enemies/berserk_variable/新版变量.png", # Updated path
-                    "image_prefix": "variable",
-                    "is_grid": True,
-                    "bgm": "audio/bgm/monster_song.mp3"
-                }
+                enemy.battle_data = dict(BATTLE_DATA["variable"])
                 enemies_group.add(enemy)
             
             # New Item at (2, 5) -> 128*2, 128*5
@@ -631,17 +238,7 @@ def main():
             if enemy_id_1 not in game_state.temp_killed_enemies:
                 # Restore to previous asset
                 enemy = OverworldEnemy(128 * 5, 128 * 5, "characters/enemies/variable_laser/variable_laser_透明.png", "variable_laser", is_grid=True)
-                enemy.battle_data = {
-                    "id": enemy_id_1,
-                    "name": "暴走变量_激光",
-                    "hp": 80,
-                    "skills": ["laser", "cube", "random_particles"],
-                    "acts": ["观察"],
-                    "image_folder": "characters/enemies/variable_laser/variable_laser_透明.png",
-                    "image_prefix": "variable_laser",
-                    "is_grid": True,
-                    "bgm": "audio/bgm/monster_song.mp3"
-                }
+                enemy.battle_data = dict(BATTLE_DATA["berserk_laser"])
                 enemies_group.add(enemy)
                 
             # 暴走变量_跳跃 at 3,3 (Restored Pos & Removed Flip)
@@ -649,17 +246,7 @@ def main():
             if enemy_id_2 not in game_state.temp_killed_enemies:
                 # Use transparent asset, NO flip correction
                 enemy = OverworldEnemy(128 * 3, 128 * 3, "characters/enemies/variable_jump/variable_jump透明.png", "variable_jump", is_grid=True)
-                enemy.battle_data = {
-                    "id": enemy_id_2,
-                    "name": "暴走变量_跳跃",
-                    "hp": 80,
-                    "skills": ["laser", "cube", "random_particles"],
-                    "acts": ["观察"],
-                    "image_folder": "characters/enemies/variable_jump/variable_jump透明.png",
-                    "image_prefix": "variable_jump",
-                    "is_grid": True,
-                    "bgm": "audio/bgm/monster_song.mp3"
-                }
+                enemy.battle_data = dict(BATTLE_DATA["berserk_jump"])
                 enemies_group.add(enemy)
 
         elif map_id == "pipe_nightmare_3_3":
@@ -674,18 +261,7 @@ def main():
              if "failure_enemy_01" not in game_state.temp_killed_enemies:
                  # Center of map: 4x4 tiles, so 256, 256 is center-ish
                  enemy = FailureEnemy(128 * 2, 128 * 2) 
-                 enemy.battle_data = {
-                     "id": "failure_enemy_01",
-                     "name": "失败之作",
-                     "hp": 100,
-                     "skills": ["noise_attack"],
-                     "acts": ["聆听"],
-                     "image_folder": "characters/enemies/failure_boss",
-                     "image_prefix": "failure",
-                     "bgm": "audio/bgm/old_doll.mp3",
-                     "bgm_start": 4.0,
-                     "bgm_volume": 0.5
-                 }
+                 enemy.battle_data = dict(BATTLE_DATA["failure"])
                  enemies_group.add(enemy)
              
              # Add Console Prop (Bottom Center)
@@ -734,19 +310,7 @@ def main():
                  # Wander between x=400 and x=750
                  enemy.set_wander_behavior(min_x=400, max_x=750, speed=0.5)
                  
-                 enemy.battle_data = {
-                     "name": "黑游侠EX",
-                     "hp": 150,
-                     # New Skills: A, B, C
-                     "skills": ["black_ranger_a", "black_ranger_b", "black_ranger_c"],
-                     "acts": ["嘲讽", "观察"],
-                     "boss_id": "base_5_boss",
-                     "bgm": "audio/bgm/heroism.mp3",
-                     "image_folder": "characters/enemies/black_ranger",
-                     "image_prefix": "black_ranger",
-                     "is_grid": True,
-                     "flip": True
-                 }
+                 enemy.battle_data = dict(BATTLE_DATA["black_ranger"])
                  enemies_group.add(enemy)
             
         elif map_id == "snow_1_3":
@@ -775,17 +339,7 @@ def main():
                  enemy.vision_range = 300
                  enemy.chase_speed = 2.0
                  
-                 enemy.battle_data = {
-                     "id": robot_id,
-                     "name": "废弃机器人",
-                     "hp": 80,
-                    "skills": ["escape_dust"],
-                    "acts": ["观察"],
-                     "image_folder": "characters/enemies/abandoned_robot",
-                     "image_prefix": "abandoned_robot",
-                     "is_grid": True,
-                     "bgm": "audio/bgm/hi.mp3"
-                 }
+                 enemy.battle_data = dict(ABANDONED_ROBOT_DATA, id=robot_id)
                  enemies_group.add(enemy)
 
         elif map_id == "base_2":
@@ -794,18 +348,7 @@ def main():
             enemy_id = "base_2_machine"
             if enemy_id not in game_state.temp_killed_enemies:
                 enemy = OverworldEnemy(128 * 3, 128 * 3, "characters/enemies/machine_soldier", "jikaizhong", is_grid=True)
-                enemy.battle_data = {
-                    "id": enemy_id,
-                    "name": "机凯种",
-                    "hp": 50,
-                    "skills": ["ruin_cutting_sequence", "laser_network"],
-                    "acts": ["嘲讽", "观察"],
-                    "image_folder": "characters/enemies/machine_soldier",
-                    "image_prefix": "jikaizhong",
-                    "is_grid": True,
-                    "bgm": "audio/bgm/machine_knight.mp3",
-                    "bgm_start": 17.5
-                }
+                enemy.battle_data = dict(BATTLE_DATA["machine_soldier"])
                 enemies_group.add(enemy)
 
         elif map_id == "base_3":
@@ -820,18 +363,7 @@ def main():
                 enemy.can_chase = True
                 enemy.vision_range = 300
                 enemy.chase_speed = 2.5
-                enemy.battle_data = {
-                    "id": enemy_id,
-                    "name": "admin",
-                    "hp": 100,
-                    "skills": ["admin_shield", "admin_laser_cut", "admin_particle_sphere"],
-                    "acts": ["嘲讽", "观察"],
-                    "image_folder": "characters/enemies/rebel_leader",
-                    "image_prefix": "rebel_leader",
-                    "is_grid": True,
-                    "bgm": "audio/bgm/the_fish.mp3",
-                    "anim_speed": 12
-                }
+                enemy.battle_data = dict(BATTLE_DATA["admin"])
                 enemies_group.add(enemy)
             
         # 3. Update Camera Limit
