@@ -27,6 +27,30 @@ from ui.effects import SnowFlake, AreaTitle, DataDust, FogGate, FogWall, ExitGlo
 from ui.atmosphere import PipeAtmosphere, PulseAtmosphere, FogMaze
 
 
+def _player_enemy_collide(player_spr, enemy_spr):
+    """敌人碰撞判定。
+
+    - 带 collision_inset 的敌人（男义军「缩水偏右」特化）：用四边内缩箱判定。
+    - 其余敌人：等价于原 collide_rect_ratio(0.6)，行为完全不变。
+    """
+    # 玩家碰撞箱：按 0.6 从中心缩放，与原 collide_rect_ratio(0.6) 一致
+    pr = player_spr.rect
+    pbox = pr.inflate(pr.width * 0.6 - pr.width, pr.height * 0.6 - pr.height)
+
+    inset = getattr(enemy_spr, 'collision_inset', None)
+    if inset is None:
+        er = enemy_spr.rect
+        ebox = er.inflate(er.width * 0.6 - er.width, er.height * 0.6 - er.height)
+    else:
+        # collision_inset = (left, top, right, bottom) 四边向内收缩的像素
+        ebox = enemy_spr.rect.copy()
+        ebox.x += inset[0]
+        ebox.y += inset[1]
+        ebox.width -= inset[0] + inset[2]
+        ebox.height -= inset[1] + inset[3]
+    return pbox.colliderect(ebox)
+
+
 # --- 新游戏开场白（暗黑之魂3式世界观/剧情交代） ---
 OPENING_LINES = [
     "星已隐曜，然位不见王影。",
@@ -319,6 +343,28 @@ class Game:
                     item.sound.set_volume(sfx_vol)
                 
 
+    def _use_homing_beacon(self):
+        """归航信标：无限使用的关键道具，传送到任意已激活的篝火（按 T 触发）。"""
+        if not any(item.get("id") == "homing_beacon" for item in self.player.inventory if isinstance(item, dict)):
+            return
+        destinations = []
+        for mid, cfg in MAP_CONFIG.items():
+            if cfg.get("has_bonfire") and mid in self.game_state.activated_bonfires:
+                destinations.append({"id": mid, "name": cfg.get("name")})
+        if not destinations:
+            self.dialogue_system.start_dialogue(["归航信标没有回应。", "也许需要先在篝火处休息过。"])
+            return
+        current_map_name = MAP_CONFIG[self.current_map_id].get("name")
+        teleport_menu = TeleportMenu(self.screen, current_map_name, destinations)
+        target_id = teleport_menu.run(self.screen.copy())
+        if target_id:
+            self.current_map_id = target_id
+            self.load_map(self.current_map_id)
+            self.update_all_volumes()
+            spawn_pos = MAP_CONFIG[self.current_map_id].get("spawn_pos", (128 * 2, 128 * 2))
+            self.player.rect.topleft = spawn_pos
+            self.ignore_bonfire_collision = True
+
     def run_transition(self, next_map_id, start_pos_type, hold_duration=0):
         
         # Record Entry Type for Logic (e.g. Pipe Nightmare 2_1 routing)
@@ -602,6 +648,8 @@ class Game:
 
                             elif event.key == pygame.K_F5:
                                 save_game(self.player, self.game_state, self.current_map_id)
+                            elif event.key == pygame.K_t:
+                                self._use_homing_beacon()
                             elif event.key == pygame.K_SPACE:
                                 # Manual Item Interaction
                                 if self.tile_manager:
@@ -1038,8 +1086,8 @@ class Game:
                             self.ignore_bonfire_collision = False
 
                         # Collision Check: Player vs Enemy -> Battle
-                        # Use ratio 0.6 to require closer proximity (smaller hitbox)
-                        collided_enemy = pygame.sprite.spritecollideany(self.player, self.enemies_group, collided=pygame.sprite.collide_rect_ratio(0.6))
+                        # 默认按 0.6 缩放；男义军带 collision_inset（缩水偏右）走特化判定
+                        collided_enemy = pygame.sprite.spritecollideany(self.player, self.enemies_group, collided=_player_enemy_collide)
                         if collided_enemy:
                             if self.player.battle_cooldown <= 0:
                                 battle_data = getattr(collided_enemy, 'battle_data', None)

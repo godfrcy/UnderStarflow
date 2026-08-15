@@ -2,7 +2,7 @@ import pygame
 import random
 import math
 from engine.config import *
-from entities.bullets import Bullet, PlasmaBlade, LaserNetworkLine, YellowBullet
+from entities.bullets import Bullet, PlasmaBlade, LaserNetworkLine, YellowBullet, UfoLaserColumn, ConveyorScrap, VerticalScrap
 from entities.particles import BattleDust, DebrisParticle
 
 
@@ -397,3 +397,119 @@ class BulletSpawnMixin:
             # Check Victory Condition - REMOVED per user request
             # Instead, we check at the end of the turn (timer <= 0) if any dusts remain uncollected.
             pass
+
+        # UFO 牵引：激光列固定，喷完就在同列再喷一次（变速/假动作）；重力列由回合逻辑决定
+        if "ufo_tractor" in self.active_skills:
+            if not hasattr(self, 'ufo_laser_col'):
+                self.ufo_laser_col = random.choice([0, 2])
+            if not hasattr(self, 'ufo_gravity_col'):
+                self.ufo_gravity_col = random.randint(0, 2)
+            if not hasattr(self, 'ufo_purple_timer'):
+                self.ufo_purple_timer = 0
+
+            # 只有当上一列喷完（无存活 UfoLaserColumn）才在同列再喷
+            laser_alive = any(isinstance(b, UfoLaserColumn) and b.alive for b in self.bullets)
+            if not laser_alive:
+                col_w = self.battle_box.width // 3
+                col_rect = pygame.Rect(
+                    self.battle_box.left + self.ufo_laser_col * col_w, self.battle_box.top,
+                    col_w, self.battle_box.height)
+
+                # 随机口味：变速（前摇时长变） vs 假动作（喷→停→再喷）
+                if random.random() < 0.5:
+                    warn = random.choice([30, 120])  # 变速：前摇快 0.5s / 慢 2s
+                    self.bullets.append(UfoLaserColumn(col_rect, warning_duration=warn, active_duration=60, pulses=1))
+                else:
+                    self.bullets.append(UfoLaserColumn(col_rect, warning_duration=60, active_duration=60, pause_duration=60, pulses=2))
+
+            # 安全列（非激光、非重力）刷新紫色竖线子弹，消除「绝对安全区」
+            self.ufo_purple_timer += 1
+            if self.ufo_purple_timer % 40 == 0:
+                safe_cols = [c for c in range(3) if c != self.ufo_laser_col and c != self.ufo_gravity_col]
+                if safe_cols:
+                    sc = random.choice(safe_cols)
+                    col_w = self.battle_box.width // 3
+                    col_left = self.battle_box.left + sc * col_w
+                    bar_w, bar_h = 12, 36
+                    bx = random.randint(col_left + 6, col_left + col_w - bar_w - 6)
+                    if random.random() < 0.5:
+                        # 自上向下
+                        by = self.battle_box.top - bar_h
+                        vy = 4
+                    else:
+                        # 自下向上
+                        by = self.battle_box.bottom
+                        vy = -4
+                    self.bullets.append(Bullet(pygame.Rect(bx, by, bar_w, bar_h), 0, vy, (190, 90, 255), b_type="normal"))
+
+        # 废料传送带（轨道跑酷）：三条虚线轨道，废料沿轨道从左侧横飞，红心上下切轨躲避
+        if "conveyor_belt" in self.active_skills:
+            if not hasattr(self, 'conveyor_rail_ys'):
+                lane_h = self.battle_box.height // 3
+                self.conveyor_rail_ys = [self.battle_box.top + lane_h * (i + 0.5) for i in range(3)]
+            if not hasattr(self, 'conveyor_spawn_timer'):
+                self.conveyor_spawn_timer = 0
+            self.conveyor_spawn_timer += 1
+
+            # 公平车流：始终留出至少 1 条空轨保证无伤可能，其余轨按占用情况补料
+            if self.conveyor_spawn_timer % 16 == 0:
+                # 统计被占用轨道（已驶入或即将驶入的废料所在轨）
+                occupied = set()
+                for b in self.bullets:
+                    if getattr(b, 'type', '') == "conveyor_scrap":
+                        for idx, ry in enumerate(self.conveyor_rail_ys):
+                            if abs(b.rect.centery - ry) < 10:
+                                occupied.add(idx)
+                free_rails = [i for i in range(3) if i not in occupied]
+                if free_rails:
+                    max_n = min(2, len(free_rails) - 1)  # 最多占 2 条，永远留 1 条空
+                    n = random.randint(1, max_n) if max_n >= 1 else 0
+                    for rail_idx in random.sample(free_rails, n):
+                        rail_y = self.conveyor_rail_ys[rail_idx]
+                        scrap_w = random.randint(40, 60)
+                        scrap_h = 18
+                        y = rail_y - scrap_h // 2
+                        x = self.battle_box.left - scrap_w
+                        speed = random.uniform(4.0, 6.5)
+                        self.bullets.append(ConveyorScrap(
+                            pygame.Rect(x, y, scrap_w, scrap_h), speed,
+                            self.battle_box.left, self.battle_box.right))
+
+        # 单摆（重力摆锤）：废料从顶部下落 / 底部上升，无轨迹线，红心沿圆形轨道摆动躲避
+        if "pendulum" in self.active_skills:
+            if not hasattr(self, 'pendulum_spawn_timer'):
+                self.pendulum_spawn_timer = 0
+            self.pendulum_spawn_timer += 1
+            if self.pendulum_spawn_timer % 22 == 0:
+                if not hasattr(self, 'pend_col_xs'):
+                    self.pend_col_xs = [self.battle_box.left + self.battle_box.width * k / 6 for k in range(1, 6)]
+                scrap_w = random.randint(16, 24)   # 窄废料
+                scrap_h = random.randint(40, 60)
+                # 首块废料强制走中间列，逼迫玩家起摆；之后两侧为主、间隙偶尔
+                if getattr(self, 'pend_first_scrap', True):
+                    lane_cx = self.pend_col_xs[2]  # 中间列
+                    self.pend_first_scrap = False
+                else:
+                    r = random.random()
+                    if r < 0.30:
+                        lane_cx = self.pend_col_xs[0]  # 列1（左）
+                    elif r < 0.60:
+                        lane_cx = self.pend_col_xs[4]  # 列3（右）
+                    elif r < 0.80:
+                        lane_cx = self.pend_col_xs[2]  # 列2（中）
+                    elif r < 0.90:
+                        lane_cx = self.pend_col_xs[1]  # 间隙 1-2
+                    else:
+                        lane_cx = self.pend_col_xs[3]  # 间隙 2-3
+                sx = lane_cx - scrap_w // 2
+                if random.random() < 0.5:
+                    # 从顶部下落
+                    sy = self.battle_box.top - scrap_h
+                    vy = random.uniform(3.0, 5.0)
+                else:
+                    # 从底部上升
+                    sy = self.battle_box.bottom
+                    vy = -random.uniform(3.0, 5.0)
+                self.bullets.append(VerticalScrap(
+                    pygame.Rect(sx, sy, scrap_w, scrap_h), vy,
+                    self.battle_box.top, self.battle_box.bottom))

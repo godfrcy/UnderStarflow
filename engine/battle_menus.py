@@ -292,6 +292,23 @@ class MenuMixin:
                          self.next_phase_after_anim = self.PHASE_MENU
                          self.action_timer = 60
                          self.item_selection_idx = 0
+                elif item_name == "纳米修复液(小)":
+                     # 每回合回复5点生命值，持续3回合
+                     self.regen_turns = 3
+                     self.regen_amount = 5
+
+                     # 消耗道具
+                     if hasattr(self.player, 'remove_item'):
+                         self.player.remove_item(item_name, 1)
+                     else:
+                         if item in self.player.inventory:
+                             self.player.inventory.remove(item)
+
+                     self.action_text = "* 你使用了纳米修复液(小)。接下来3回合每回合回复5点生命。"
+                     self.current_phase = self.PHASE_PLAYER_ANIM
+                     self.next_phase_after_anim = self.PHASE_ENEMY_TURN
+                     self.action_timer = 90
+                     self.item_selection_idx = 0
                 else:
                     self.action_text = f"* 使用了 {item_name}，但什么也没发生。"
                     self.current_phase = self.PHASE_PLAYER_ANIM

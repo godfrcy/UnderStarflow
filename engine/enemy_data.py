@@ -12,6 +12,48 @@ ABANDONED_ROBOT_DATA = {
     "bgm": "audio/bgm/hi.mp3",
 }
 
+# 废弃机器人MK2：管道噩梦3-1 的加强版废弃机体，16 帧全用
+ABANDONED_ROBOT_MK2_DATA = {
+    "name": "废弃机器人MK2",
+    "hp": 100,
+    "skills": ["conveyor_belt", "pendulum"],
+    "acts": ["观察"],
+    "image_folder": "characters/enemies/abandoned_robot_mk2",
+    "image_prefix": "abandoned_robot_mk2",
+    "is_grid": True,
+    # 地狱王子：前 16s 已裁剪掉，整体 1.5 倍速；再跳过开头 0.5s（保险起见用 start 而非裁剪）
+    "bgm": "audio/bgm/hell_prince_fast.wav",
+    "bgm_start": 1,
+}
+
+# 双生舞怜：管道噩梦3-2 的舞者人偶（boss，击败后不再刷新）
+# 双阶段战斗：一阶段循环 Angela 前 1:32；血量降到 50% 进二阶段，切 Angela 3:05~结尾
+TWIN_DANCER_DATA = {
+    "name": "双生舞怜",
+    "boss_id": "pipe_3_2_boss",
+    "hp": 160,
+    "skills": ["dancer_dash", "dancer_chase", "soviet_emblem"],
+    "acts": ["观察"],
+    "image_folder": "characters/enemies/twin_dancer",
+    "image_prefix": "twin_dancer",
+    "is_grid": True,
+    "bgm": "audio/bgm/angela_phase1.wav",
+    "bgm_phase2": "audio/bgm/angela_phase2.wav",
+    "phase2_hp_ratio": 0.75,
+}
+
+# UFO：管道噩梦3-1 的飞行器（占位战斗数据，技能/数值 待补充）
+UFO_DATA = {
+    "name": "UFO",
+    "hp": 90,
+    "skills": ["ufo_tractor"],
+    "acts": ["观察"],
+    "image_folder": "characters/enemies/ufo",
+    "image_prefix": "ufo",
+    "is_grid": True,
+    "bgm": "audio/bgm/UFO.mp3",
+}
+
 BATTLE_DATA = {
     "ghost_samurai": {
         "id": "pipe_2_2_boss",
@@ -109,5 +151,19 @@ BATTLE_DATA = {
         "is_grid": True,
         "bgm": "audio/bgm/the_fish.mp3",
         "anim_speed": 12,
+    },
+    "rebel_soldier": {
+        "id": "base_4_rebel_soldier",
+        "name": "义军士兵",
+        "hp": 60,
+        "skills": ["ruin_cutting_sequence", "laser_network"],
+        "acts": ["观察"],
+        "image_folder": "characters/enemies/rebel_soldier",
+        "image_prefix": "rebel_soldier",
+        "is_grid": True,
+        # 保留 1_1 ~ 2_2 六帧作行走循环，其余 10 帧跳过
+        "skip_frames": [6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
+        "bgm": "audio/bgm/the_fish.mp3",
+        "anim_speed": 12,  # 战斗立绘动画与地图实体 ANIM_SPEED=12 保持一致
     },
 }

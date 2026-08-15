@@ -44,11 +44,14 @@ ENCOUNTER_LINES = {
     "variable": "……离开主机网络的劣等机器，清理掉就好。",
     "machine": "机凯种。和我一样，被主机操纵着。",
     "rebel": "格里菲斯的部队，为什么会出现在这里？",
+    "rebel_soldier": "格里菲斯的残兵，装备是搜刮来的旧军火。",
     "black_ranger": "黑游侠，旧时代遗留的武装机体。",
     "berserk": "劣等机器，在这里失控暴走了。",
     "abandoned_robot": "被主机淘汰的废弃机体，和我同款。",
     "ghost_samurai": "旧时代的守卫。它为什么会守在这里？",
     "failure": "失败之作，被主机封锁的禁忌原型。",
+    "twin_dancer": "……没有呼吸的舞者，被主机留在管道里的旧人偶。",
+    "ufo": "……还在自动巡航的旧飞行器，主机没有回收它。",
 }
 
 # battle_data 的 id / boss_id → 遭遇类型
@@ -56,11 +59,15 @@ _ENCOUNTER_TYPE_BY_KEY = {
     "snow_1_2_variable": "variable",
     "base_2_machine": "machine",
     "base_3_admin": "rebel",
+    "base_4_rebel_soldier": "rebel_soldier",
     "base_5_boss": "black_ranger",
     "pipe_nightmare_1_laser": "berserk",
     "pipe_nightmare_1_jump": "berserk",
     "pipe_nightmare_1_3_robot": "abandoned_robot",
     "pipe_nightmare_2_3_robot": "abandoned_robot",
+    "pipe_nightmare_3_1_robot_mk2": "abandoned_robot",
+    "pipe_nightmare_3_2_twin_dancer": "twin_dancer",
+    "pipe_nightmare_3_1_ufo": "ufo",
     "pipe_2_2_boss": "ghost_samurai",
     "failure_enemy_01": "failure",
 }

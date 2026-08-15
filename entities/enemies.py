@@ -174,6 +174,22 @@ class OverworldEnemy(pygame.sprite.Sprite):
         self.facing_right = True
         self.wander_pos_x = float(self.rect.centerx)
 
+    def set_patrol_rect(self, min_x, min_y, max_x, max_y, speed=1.0):
+        """矩形转圈巡逻：沿矩形边界顺时针循环（右→下→左→上），用于固定区域徘徊。"""
+        self.patrol_min_x = min_x
+        self.patrol_min_y = min_y
+        self.patrol_max_x = max_x
+        self.patrol_max_y = max_y
+        self.patrol_speed = speed
+        self.is_patrolling = True
+        self.patrol_dir = 0  # 0=右 1=下 2=左 3=上
+        self.facing_right = True
+        self.traj_x = float(min_x)  # 干净轨迹坐标
+        self.traj_y = float(min_y)
+        self.pos = [float(min_x), float(min_y)]
+        self.rect.x = min_x
+        self.rect.y = min_y
+
     def update(self, player=None):
         if self.is_static:
             return
@@ -212,7 +228,7 @@ class OverworldEnemy(pygame.sprite.Sprite):
                         self.image = pygame.transform.flip(base_image, True, False)
                     else:
                         self.image = base_image
-            elif getattr(self, 'is_wandering', False):
+            elif getattr(self, 'is_wandering', False) or getattr(self, 'is_patrolling', False):
                 if not self.facing_right:
                     self.image = pygame.transform.flip(base_image, True, False)
                 else:
@@ -264,6 +280,35 @@ class OverworldEnemy(pygame.sprite.Sprite):
                 if self.pos[0] <= self.wander_min_x:
                     self.facing_right = True
             self.rect.x = int(self.pos[0])
+        elif getattr(self, 'is_patrolling', False):
+            # 矩形转圈巡逻：右→下→左→上 循环（traj 记录干净轨迹）
+            if self.patrol_dir == 0:  # 右
+                self.traj_x += self.patrol_speed
+                if self.traj_x >= self.patrol_max_x:
+                    self.traj_x = float(self.patrol_max_x)
+                    self.patrol_dir = 1
+            elif self.patrol_dir == 1:  # 下
+                self.traj_y += self.patrol_speed
+                if self.traj_y >= self.patrol_max_y:
+                    self.traj_y = float(self.patrol_max_y)
+                    self.patrol_dir = 2
+                    self.facing_right = False
+            elif self.patrol_dir == 2:  # 左
+                self.traj_x -= self.patrol_speed
+                if self.traj_x <= self.patrol_min_x:
+                    self.traj_x = float(self.patrol_min_x)
+                    self.patrol_dir = 3
+            elif self.patrol_dir == 3:  # 上
+                self.traj_y -= self.patrol_speed
+                if self.traj_y <= self.patrol_min_y:
+                    self.traj_y = float(self.patrol_min_y)
+                    self.patrol_dir = 0
+                    self.facing_right = True
+
+            self.pos[0] = self.traj_x
+            self.pos[1] = self.traj_y
+            self.rect.x = int(self.traj_x)
+            self.rect.y = int(self.traj_y)
 
 class Bonfire(OverworldEnemy):
     def __init__(self, x, y):
@@ -366,3 +411,69 @@ class FailureEnemy(OverworldEnemy):
 
         # 所有帧尺寸一致（同一批贴图水平翻转），无需重算 rect，
         # 且绝不能把累积的 self.pos[0] 用 int(self.rect.x) 覆盖回去。
+
+
+class TwinDancer(OverworldEnemy):
+    """双生舞怜：管道噩梦3-2 的舞者人偶。
+    只有两个动作：随机等待 3~5 秒后向右跑 1.5 秒停下，再向左跑回原位停下。
+    不主动追击玩家，纯地图表演（撞上后仍按 battle_data 进战斗）。"""
+    def __init__(self, x, y):
+        # 站立帧走 is_grid，只加载 twin_dancer_1_1.png 一张（父类默认缩放到 128x128）
+        super().__init__(x, y, "characters/enemies/twin_dancer", "twin_dancer", is_grid=True)
+        self.stand_image = self.frames[0] if self.frames else self.image
+
+        # 跑动图（单张，默认朝右；向左时水平翻转），缩放到与站立帧同高
+        self.run_image_right = self.stand_image
+        self.run_image_left = self.stand_image
+        run_path = resource_path("characters/enemies/twin_dancer/twin_dancer_run.png")
+        if os.path.exists(run_path):
+            run_img = pygame.image.load(run_path).convert_alpha()
+            h = self.rect.height
+            scale = h / run_img.get_height()
+            w = int(run_img.get_width() * scale)
+            run_img = pygame.transform.scale(run_img, (w, h))
+            self.run_image_right = run_img
+            self.run_image_left = pygame.transform.flip(run_img, True, False)
+
+        # 动作状态机：idle → run_right → stop → run_left → stop2 → idle
+        self.state = "idle"
+        self.state_timer = random.uniform(3.0, 5.0) * 60  # 帧
+        self.origin_x = float(self.rect.x)
+        self.run_speed = 2.5
+        self.RUN_FRAMES = int(1.5 * 60)   # 向右跑 1.5 秒
+        self.STOP_FRAMES = int(0.3 * 60)  # 停顿 0.3 秒
+        self.image = self.stand_image
+
+    def update(self, player=None):
+        self.state_timer -= 1
+
+        if self.state == "idle":
+            self.image = self.stand_image
+            if self.state_timer <= 0:
+                self.state = "run_right"
+                self.state_timer = self.RUN_FRAMES
+        elif self.state == "run_right":
+            self.image = self.run_image_right
+            self.pos[0] += self.run_speed
+            self.rect.x = int(self.pos[0])
+            if self.state_timer <= 0:
+                self.state = "stop"
+                self.state_timer = self.STOP_FRAMES
+        elif self.state == "stop":
+            self.image = self.stand_image
+            if self.state_timer <= 0:
+                self.state = "run_left"
+                self.state_timer = self.RUN_FRAMES
+        elif self.state == "run_left":
+            self.image = self.run_image_left
+            self.pos[0] -= self.run_speed
+            if self.pos[0] <= self.origin_x:
+                self.pos[0] = self.origin_x
+                self.state = "stop2"
+                self.state_timer = self.STOP_FRAMES
+            self.rect.x = int(self.pos[0])
+        elif self.state == "stop2":
+            self.image = self.stand_image
+            if self.state_timer <= 0:
+                self.state = "idle"
+                self.state_timer = random.uniform(3.0, 5.0) * 60

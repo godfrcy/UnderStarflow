@@ -36,6 +36,15 @@ class RenderMixin:
         # Draw Enemy
         enemy_draw_pos = self.enemy_rect.move(self.shake_offset)
         self.screen.blit(self.enemy_img, enemy_draw_pos)
+
+        # 二阶段过渡红叉：随机打在左/右舞者身上，进入二阶段后保留
+        if getattr(self, 'phase2_cross_side', None):
+            side = self.phase2_cross_side
+            cx = enemy_draw_pos.left + enemy_draw_pos.width * (0.35 if side == "left" else 0.70)
+            cy = enemy_draw_pos.centery
+            s = 32
+            pygame.draw.line(self.screen, (255, 0, 0), (cx - s, cy - s), (cx + s, cy + s), 9)
+            pygame.draw.line(self.screen, (255, 0, 0), (cx - s, cy + s), (cx + s, cy - s), 9)
         
         # Draw Energy Shield (REMOVED as per request - Legacy Effect)
         # if self.is_shield_active:
@@ -104,6 +113,130 @@ class RenderMixin:
                 self.screen.blit(text_surf, (box_draw_rect.x + 20, box_draw_rect.y + 20))
                 
         elif self.current_phase == self.PHASE_ENEMY_TURN:
+            # UFO 牵引：重力列纯紫色高亮（无害指示）+ 中间竖线向上滚动的紫色箭头
+            if "ufo_tractor" in self.active_skills and hasattr(self, 'ufo_gravity_col'):
+                col_w = self.battle_box.width // 3
+                g_rect = pygame.Rect(
+                    self.battle_box.left + self.ufo_gravity_col * col_w, self.battle_box.top,
+                    col_w, self.battle_box.height).move(self.shake_offset)
+                # 整列纯紫色半透明填充（非条纹）
+                overlay = pygame.Surface((col_w, self.battle_box.height), pygame.SRCALPHA)
+                overlay.fill((150, 70, 220, 80))
+                self.screen.blit(overlay, (g_rect.x, g_rect.y))
+                # 只有中间竖线刷向上滚动的紫色箭头（上下留边，提前消失不穿模边框）
+                t = pygame.time.get_ticks()
+                ax = g_rect.centerx
+                margin = 10
+                cycle = self.battle_box.height - 2 * margin
+                for i in range(4):
+                    off_y = ((i * 60) - (t // 6)) % cycle + margin
+                    ay = g_rect.y + off_y
+                    pts = [(ax, ay - 7), (ax - 7, ay + 5), (ax + 7, ay + 5)]
+                    pygame.draw.polygon(self.screen, (205, 130, 255), pts)
+
+            # 废料传送带：只画三条水平虚线轨道，红心挂在上面
+            if "conveyor_belt" in self.active_skills:
+                lane_h = self.battle_box.height // 3
+                for i in range(3):
+                    ry = self.battle_box.top + lane_h * (i + 0.5) + self.shake_offset[1]
+                    for x in range(self.battle_box.left + self.shake_offset[0], self.battle_box.right + self.shake_offset[0], 16):
+                        pygame.draw.line(self.screen, (170, 170, 180), (x, ry), (x + 8, ry), 2)
+
+            # 单摆（重力摆锤）：圆形虚线轨道（可达下弧）+ 摆杆 + 枢轴
+            if "pendulum" in self.active_skills:
+                pivot = (self.battle_box.centerx + self.shake_offset[0], self.battle_box.top + self.shake_offset[1])
+                r = getattr(self, 'pend_len', 150)
+                max_a = getattr(self, 'pend_max_angle', 1.22)
+                ang = getattr(self, 'pend_angle', 0.0)
+                n = 24
+                for i in range(n):
+                    a1 = -max_a + (2 * max_a) * i / n
+                    a2 = -max_a + (2 * max_a) * (i + 1) / n
+                    if i % 2 == 0:
+                        x1 = pivot[0] + r * math.sin(a1)
+                        y1 = pivot[1] + r * math.cos(a1)
+                        x2 = pivot[0] + r * math.sin(a2)
+                        y2 = pivot[1] + r * math.cos(a2)
+                        pygame.draw.line(self.screen, (170, 170, 180), (x1, y1), (x2, y2), 2)
+                bx = pivot[0] + r * math.sin(ang)
+                by = pivot[1] + r * math.cos(ang)
+                pygame.draw.line(self.screen, (140, 140, 150), (pivot[0], pivot[1]), (bx, by), 2)
+                pygame.draw.circle(self.screen, (170, 170, 180), (int(pivot[0]), int(pivot[1])), 4)
+
+            # 双生舞怜·苏联国徽单摆：金色地球 + 下半圆下摆（=摆锤轨道）+ 摆杆
+            if "soviet_emblem" in self.active_skills:
+                pivot = (self.battle_box.centerx + self.shake_offset[0], self.battle_box.top + 90 + self.shake_offset[1])
+                r = getattr(self, 'pend_len', 120)
+                ang = getattr(self, 'pend_angle', 0.0)
+                gold = (255, 200, 60)
+                earth_r = 45
+                # 二阶段：中央重力域——覆盖整条单摆的圆形力场（脉冲时增亮扩张）
+                if self.phase == 2:
+                    grav_on = getattr(self, 'grav_pulse_on', False)
+                    gr = r
+                    field = pygame.Surface((gr * 2, gr * 2), pygame.SRCALPHA)
+                    alpha = 40 if grav_on else 20
+                    pygame.draw.circle(field, (200, 70, 130, alpha), (gr, gr), gr)
+                    self.screen.blit(field, (int(pivot[0] - gr), int(pivot[1] - gr)))
+                    if grav_on:
+                        pr = gr + (8 if (getattr(self, 'grav_pulse_timer', 0) // 5) % 2 == 0 else 0)
+                        pygame.draw.circle(self.screen, (255, 120, 150), (int(pivot[0]), int(pivot[1])), pr, 3)
+                        pygame.draw.circle(self.screen, (255, 190, 205), (int(pivot[0]), int(pivot[1])), gr, 1)
+                    else:
+                        pygame.draw.circle(self.screen, (150, 70, 100), (int(pivot[0]), int(pivot[1])), gr, 2)
+                # 地球（圆）+ 经纬线
+                pygame.draw.circle(self.screen, gold, (int(pivot[0]), int(pivot[1])), earth_r, 3)
+                pygame.draw.line(self.screen, gold, (pivot[0] - earth_r, pivot[1]), (pivot[0] + earth_r, pivot[1]), 1)
+                pygame.draw.line(self.screen, gold, (pivot[0], pivot[1] - earth_r), (pivot[0], pivot[1] + earth_r), 1)
+                # 下半圆下摆（从 -90° 到 +90° 的下弧）
+                n = 32
+                for i in range(n):
+                    a1 = -math.pi / 2 + math.pi * i / n
+                    a2 = -math.pi / 2 + math.pi * (i + 1) / n
+                    x1 = pivot[0] + r * math.sin(a1)
+                    y1 = pivot[1] + r * math.cos(a1)
+                    x2 = pivot[0] + r * math.sin(a2)
+                    y2 = pivot[1] + r * math.cos(a2)
+                    pygame.draw.line(self.screen, gold, (x1, y1), (x2, y2), 3)
+                # 摆杆（枢轴 → 摆锤）
+                bx = pivot[0] + r * math.sin(ang)
+                by = pivot[1] + r * math.cos(ang)
+                pygame.draw.line(self.screen, gold, (pivot[0], pivot[1]), (bx, by), 2)
+                pygame.draw.circle(self.screen, gold, (int(pivot[0]), int(pivot[1])), 4)
+
+            # 双生舞怜·田字格追逐：完整田字格（外框 + 十字），全虚线
+            if "dancer_chase" in self.active_skills:
+                cols = self.dancer_grid_cols
+                rows = self.dancer_grid_rows
+                L = int(cols[0] + self.shake_offset[0])
+                R = int(cols[2] + self.shake_offset[0])
+                T = int(rows[0] + self.shake_offset[1])
+                B = int(rows[2] + self.shake_offset[1])
+                Mx = int(cols[1] + self.shake_offset[0])
+                My = int(rows[1] + self.shake_offset[1])
+                # 外框四条边（虚线）
+                for x in range(L, R, 16):
+                    pygame.draw.line(self.screen, (170, 170, 180), (x, T), (min(x + 8, R), T), 2)
+                    pygame.draw.line(self.screen, (170, 170, 180), (x, B), (min(x + 8, R), B), 2)
+                for y in range(T, B, 16):
+                    pygame.draw.line(self.screen, (170, 170, 180), (L, y), (L, min(y + 8, B)), 2)
+                    pygame.draw.line(self.screen, (170, 170, 180), (R, y), (R, min(y + 8, B)), 2)
+                # 中间十字（虚线）
+                for y in range(T, B, 16):
+                    pygame.draw.line(self.screen, (170, 170, 180), (Mx, y), (Mx, min(y + 8, B)), 2)
+                for x in range(L, R, 16):
+                    pygame.draw.line(self.screen, (170, 170, 180), (x, My), (min(x + 8, R), My), 2)
+                # 二阶段：追击者走过的路径燃烧（红实线覆盖虚线）
+                burned = getattr(self, 'dancer_burned_edges', None)
+                if burned:
+                    for (r1, c1), (r2, c2) in burned:
+                        bx1 = int(cols[c1] + self.shake_offset[0])
+                        by1 = int(rows[r1] + self.shake_offset[1])
+                        bx2 = int(cols[c2] + self.shake_offset[0])
+                        by2 = int(rows[r2] + self.shake_offset[1])
+                        pygame.draw.line(self.screen, (150, 0, 0), (bx1, by1), (bx2, by2), 7)
+                        pygame.draw.line(self.screen, (255, 40, 40), (bx1, by1), (bx2, by2), 3)
+
             for b in self.bullets:
                 b.draw(self.screen, offset=self.shake_offset)
 

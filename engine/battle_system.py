@@ -6,7 +6,7 @@ from engine.utils import resource_path, get_font
 from engine.config import *
 from engine.audio import load_bgm
 from engine.pattern_loader import PatternRunner, load_pattern
-from entities.bullets import Bullet, PlasmaBlade, LaserNetworkLine, YellowBullet
+from entities.bullets import Bullet, PlasmaBlade, LaserNetworkLine, YellowBullet, DancerHead, DancerChaser, DancerRail
 from entities.particles import BattleDust, DebrisParticle
 from engine.battle_spawner import BulletSpawnMixin
 from engine.battle_menus import MenuMixin
@@ -36,6 +36,7 @@ class BattleManager(BulletSpawnMixin, MenuMixin, ShieldMixin, RenderMixin):
         self.PHASE_MERCY_SELECT = 6
         self.PHASE_FLEE_SELECT = 7
         self.PHASE_VICTORY = 8
+        self.PHASE_PHASE2_TRANSITION = 9
         
         # State Variables
         self.current_phase = self.PHASE_ENEMY_TURN
@@ -70,6 +71,7 @@ class BattleManager(BulletSpawnMixin, MenuMixin, ShieldMixin, RenderMixin):
         self.magnets = []
         self.enemy_turn_timer = 0
         self.ENEMY_TURN_DURATION = 60 * 8
+        self.DANCER_DASH_FINISH_BUFFER = 90   # 二阶段技能组1切割完成后，留 1.5s 缓冲再结束回合
         self.damage_flash_timer = 0
         
         # Battle Result
@@ -225,6 +227,17 @@ class BattleManager(BulletSpawnMixin, MenuMixin, ShieldMixin, RenderMixin):
         self.enemy_hp = self.enemy_data.get("hp", 50)
         self.enemy_max_hp = self.enemy_hp
         self.enemy_turn_timer = self.ENEMY_TURN_DURATION
+
+        # 双阶段战斗状态：血量降到 phase2_hp_ratio 阈值后进二阶段（切换 BGM 等）
+        self.phase = 1
+        self.phase2_triggered = False
+        self.dancer_lock_round_pending = False   # 二阶段濒死锁血演出回合待触发
+        self.dancer_lock_round_done = False      # 锁血演出回合已执行（只锁一次）
+        self.phase2_cross_side = None
+
+        # 纳米修复液：持续回血 buff（每回合 +regen_amount，持续 regen_turns 回合）
+        self.regen_turns = 0
+        self.regen_amount = 0
         
         # Setup Heart
         self.heart_rect = self.heart_img.get_rect(center=self.battle_box.center)
@@ -447,6 +460,15 @@ class BattleManager(BulletSpawnMixin, MenuMixin, ShieldMixin, RenderMixin):
             elif self.current_phase == self.PHASE_FLEE_SELECT:
                 self.handle_flee_input(event)
                 
+            # Phase: Enemy Turn（轨道跑酷：上下键切换轨道）
+            elif self.current_phase == self.PHASE_ENEMY_TURN:
+                if "conveyor_belt" in self.active_skills:
+                    idx = getattr(self, 'conveyor_rail_index', 1)
+                    if event.key == pygame.K_UP or event.key == pygame.K_w:
+                        self.conveyor_rail_index = max(0, idx - 1)
+                    elif event.key == pygame.K_DOWN or event.key == pygame.K_s:
+                        self.conveyor_rail_index = min(2, idx + 1)
+
             # Phase: VICTORY
             elif self.current_phase == self.PHASE_VICTORY:
                 if event.key == pygame.K_z or event.key == pygame.K_RETURN or event.key == pygame.K_SPACE:
@@ -464,7 +486,7 @@ class BattleManager(BulletSpawnMixin, MenuMixin, ShieldMixin, RenderMixin):
 
     def update(self):
         if not self.running: return
-        
+
         # Enemy Animation
         self.enemy_anim_timer += 1
         if self.enemy_anim_timer >= self.ENEMY_ANIM_SPEED:
@@ -492,13 +514,33 @@ class BattleManager(BulletSpawnMixin, MenuMixin, ShieldMixin, RenderMixin):
                 if self.should_exit_battle:
                     self.running = False
                 elif self.enemy_hp <= 0:
-                    self.battle_result = "win"
-                    self.current_phase = self.PHASE_VICTORY
-                    self.process_victory()
+                    if self._can_enter_phase2():
+                        # 一阶段血条清空 → 二阶段过渡：随机给左/右舞者打红叉
+                        self.phase2_cross_side = random.choice(["left", "right"])
+                        self.current_phase = self.PHASE_PHASE2_TRANSITION
+                        self.action_timer = 90
+                        self.dialog_text = "* 双生舞怜 发生了变化！"
+                    elif self._should_trigger_lock_round():
+                        # 二阶段濒死：锁血为 1，进入虚弱挣扎的演出回合（锁血轮）
+                        self.enemy_hp = 1
+                        self.dancer_lock_round_pending = True
+                        self.current_phase = self.PHASE_ENEMY_TURN
+                        self.start_enemy_turn()
+                    else:
+                        self.battle_result = "win"
+                        self.current_phase = self.PHASE_VICTORY
+                        self.process_victory()
                 else:
                     self.current_phase = self.next_phase_after_anim
                     if self.current_phase == self.PHASE_ENEMY_TURN:
                         self.start_enemy_turn()
+
+        # 二阶段过渡：红叉动画结束后正式进入二阶段
+        elif self.current_phase == self.PHASE_PHASE2_TRANSITION:
+            self.action_timer -= 1
+            if self.action_timer <= 0:
+                self._begin_phase2()
+                self.current_phase = self.PHASE_MENU
 
         # Enemy Turn (Bullets)
         elif self.current_phase == self.PHASE_ENEMY_TURN:
@@ -510,6 +552,29 @@ class BattleManager(BulletSpawnMixin, MenuMixin, ShieldMixin, RenderMixin):
             popup['pos'][1] -= 0.5
             if popup['timer'] <= 0:
                 self.damage_popups.remove(popup)
+
+    def _can_enter_phase2(self):
+        """一阶段血条清空后是否进入二阶段：仅当配置了 bgm_phase2 且尚未触发。"""
+        return (self.phase == 1 and not self.phase2_triggered
+                and bool(self.enemy_data) and bool(self.enemy_data.get("bgm_phase2")))
+
+    def _should_trigger_lock_round(self):
+        """二阶段濒死时是否触发锁血演出回合：仅双生舞怜，且只锁一次。"""
+        return (self.phase == 2
+                and "双生舞怜" in self.enemy_data.get("name", "")
+                and not self.dancer_lock_round_done)
+
+    def _begin_phase2(self):
+        """正式进入二阶段：血量重置为一阶段×phase2_hp_ratio，并切换 BGM。"""
+        self.phase2_triggered = True
+        self.phase = 2
+        ratio = self.enemy_data.get("phase2_hp_ratio", 0.75)
+        self.enemy_max_hp = max(1, int(round(self.enemy_max_hp * ratio)))
+        self.enemy_hp = self.enemy_max_hp
+        phase2_bgm = self.enemy_data.get("bgm_phase2")
+        if phase2_bgm:
+            load_bgm(phase2_bgm, start_pos=self.enemy_data.get("bgm_phase2_start", 0.0))
+            pygame.mixer.music.set_volume(self.enemy_data.get("bgm_volume", 1.0))
 
     def process_victory(self):
         self.victory_messages = []
@@ -545,6 +610,11 @@ class BattleManager(BulletSpawnMixin, MenuMixin, ShieldMixin, RenderMixin):
             exp_gain = 20
             items_gained.append("鬼武士的动力炉")
             self.player.inventory.append({"name": "鬼武士的动力炉", "type": "key_item", "description": "鬼武士的核心部件", "tag": "boss_trophy"})
+
+        elif "双生舞怜" in enemy_name:
+            exp_gain = 50
+            items_gained.append("双生舞怜的动力炉")
+            self.player.inventory.append({"name": "双生舞怜的动力炉", "type": "key_item", "description": "双生舞怜的核心部件", "tag": "boss_trophy"})
             
         # Apply EXP
         if hasattr(self.player, "gain_exp"):
@@ -559,6 +629,17 @@ class BattleManager(BulletSpawnMixin, MenuMixin, ShieldMixin, RenderMixin):
         if exp_gain > 0:
             self.victory_messages.append(f"获得了 {exp_gain} EXP！")
             
+    def _apply_regen(self):
+        """纳米修复液：每回合（敌方回合结束回到菜单时）结算一次持续回血。"""
+        if self.regen_turns > 0 and self.player.hp > 0:
+            heal = min(self.regen_amount, self.player.max_hp - self.player.hp)
+            if heal > 0:
+                self.player.hp += heal
+                self._spawn_damage_popup(heal, (0, 255, 120), self.heart_rect.topleft, timer=60)
+            self.regen_turns -= 1
+            if self.regen_turns == 0:
+                self.regen_amount = 0
+
     def start_enemy_turn(self):
         self.turn_count += 1
         
@@ -697,6 +778,160 @@ class BattleManager(BulletSpawnMixin, MenuMixin, ShieldMixin, RenderMixin):
                  self.gravity = 0.6
                  self.jump_strength = -9
                  self.on_ground = True
+        elif "UFO" in enemy_name:
+            self.active_skills = ["ufo_tractor"]
+            if self.turn_count == 1:
+                # 新战斗：激光列固定（左或右，整场不变）
+                self.ufo_laser_col = random.choice([0, 2])
+                # 第一回合重力固定中间，教学「紫条无害」
+                self.ufo_gravity_col = 1
+            else:
+                # 后续回合：重力交替到另一个非激光列
+                non_l = [c for c in range(3) if c != self.ufo_laser_col]
+                self.ufo_gravity_col = non_l[1] if self.ufo_gravity_col == non_l[0] else non_l[0]
+            self.ufo_gravity_time = 0
+            self.dialog_text = "* UFO 启动了牵引光束。"
+        elif "废弃机器人MK2" in enemy_name:
+            # 两个技能组交替：奇数回合=废料传送带（切轨），偶数回合=重力摆锤（单摆）
+            if self.turn_count % 2 == 1:
+                self.active_skills = ["conveyor_belt"]
+                self.wind_force = [0, 0]
+                # 轨道跑酷：三条虚线轨道，红心挂中间轨，上下键切轨
+                lane_h = self.battle_box.height // 3
+                self.conveyor_rail_ys = [self.battle_box.top + lane_h * (i + 0.5) for i in range(3)]
+                self.conveyor_rail_index = 1
+                self.heart_pos[0] = self.battle_box.centerx - self.heart_rect.width / 2.0
+                self.heart_pos[1] = self.conveyor_rail_ys[1] - self.heart_rect.height / 2.0
+                self.heart_rect.x = int(self.heart_pos[0])
+                self.heart_rect.y = int(self.heart_pos[1])
+                self.dialog_text = "* 废弃机器人MK2 启动了废料传送带。"
+            else:
+                self.active_skills = ["pendulum"]
+                self.wind_force = [0, 0]
+                # 单摆：摆锤从顶部枢轴挂下，沿圆形轨道摆动，左右键施加力矩
+                self.pend_pivot = (self.battle_box.centerx, self.battle_box.top)
+                self.pend_len = 150
+                self.pend_angle = 0.0
+                self.pend_omega = 0.0
+                self.pend_k = 0.004        # 重力回复强度
+                self.pend_torque = 0.0025   # 玩家左右键力矩
+                self.pend_damping = 0.99
+                self.pend_max_angle = 1.22  # 最大摆角 ~70°
+                # 不可见的垂直固定路径：3 主列 + 2 间隙列；首块废料强制走中间列逼迫起摆
+                self.pend_col_xs = [self.battle_box.left + self.battle_box.width * k / 6 for k in range(1, 6)]
+                self.pend_first_scrap = True
+                bx = self.pend_pivot[0] + self.pend_len * math.sin(self.pend_angle)
+                by = self.pend_pivot[1] + self.pend_len * math.cos(self.pend_angle)
+                self.heart_pos[0] = bx - self.heart_rect.width / 2.0
+                self.heart_pos[1] = by - self.heart_rect.height / 2.0
+                self.heart_rect.x = int(self.heart_pos[0])
+                self.heart_rect.y = int(self.heart_pos[1])
+                self.dialog_text = "* 废弃机器人MK2 启动了重力摆锤。"
+        elif "双生舞怜" in enemy_name:
+            self.wind_force = [0, 0]
+            # 加载单个舞者头颅像（65 开头资源），裁剪透明边后缩放（两技能共用）
+            if not hasattr(self, 'dancer_head_img'):
+                try:
+                    hp = resource_path("characters/enemies/twin_dancer/65f5c91c41ab43abbbce7883b24bd422.png")
+                    head_img = pygame.image.load(hp).convert_alpha()
+                    try:
+                        bbox = pygame.mask.from_surface(head_img).get_bounding_rects()[0]
+                        if bbox.width > 0 and bbox.height > 0:
+                            head_img = head_img.subsurface(bbox)
+                    except Exception:
+                        pass
+                    h = 64
+                    scale = h / head_img.get_height()
+                    head_img = pygame.transform.scale(head_img, (int(head_img.get_width() * scale), h))
+                    self.dancer_head_img = head_img
+                except Exception as e:
+                    print(f"Failed to load dancer head: {e}")
+                    self.dancer_head_img = pygame.Surface((48, 48), pygame.SRCALPHA)
+                    pygame.draw.circle(self.dancer_head_img, (200, 180, 220), (24, 24), 22)
+            # 二阶段锁血演出回合：只剩一只虚弱舞者，用速度减半的斜线冲刺做最后挣扎
+            if self.dancer_lock_round_pending:
+                self.dancer_lock_round_pending = False
+                self.dancer_lock_round_done = True
+                self.active_skills = ["dancer_dash"]
+                self.bullets.append(DancerHead(self.dancer_head_img, "left", self.battle_box, 0, weak=True))
+                self.dialog_text = "* 双生舞怜 用尽最后的力气冲了过来。"
+                return
+            # 一阶段三技能循环：1=机枢舞者（斜线冲刺），2=田字格追逐，0=苏联国徽单摆
+            mod = self.turn_count % 3
+            if mod == 1:
+                self.active_skills = ["dancer_dash"]
+                if self.phase == 2:
+                    # 二阶段：每次只刷新一个舞者，前摇 0.2s、速度 +20%、轨迹留红激光
+                    side = random.choice(["left", "right"])
+                    self.bullets.append(DancerHead(self.dancer_head_img, side, self.battle_box, 0,
+                                                   phase2=True, bullets_ref=self.bullets))
+                else:
+                    # 左右各一只颅像，右侧延迟 60 帧（1s）错开节奏
+                    self.bullets.append(DancerHead(self.dancer_head_img, "left", self.battle_box, 0))
+                    self.bullets.append(DancerHead(self.dancer_head_img, "right", self.battle_box, 60))
+                self.dialog_text = "* 双生舞怜 起舞了。"
+            elif mod == 2:
+                self.active_skills = ["dancer_chase"]
+                # 田字格几何：战斗框内部一个完整独立的"田"字（外框 + 十字），四周留边距
+                m = 40
+                self.dancer_grid_cols = [self.battle_box.left + m, self.battle_box.centerx, self.battle_box.right - m]
+                self.dancer_grid_rows = [self.battle_box.top + m, self.battle_box.centery, self.battle_box.bottom - m]
+                # 玩家出生在田字格中央节点 (1,1)，之后沿虚线网格行走
+                self.dancer_pgrid = (1, 1)
+                self.dancer_ptarget = None
+                self.heart_pos[0] = self.dancer_grid_cols[1] - self.heart_rect.width / 2.0
+                self.heart_pos[1] = self.dancer_grid_rows[1] - self.heart_rect.height / 2.0
+                self.heart_rect.x = int(self.heart_pos[0])
+                self.heart_rect.y = int(self.heart_pos[1])
+                # 燃烧路径：二阶段追击者走过的边集合（边 → 剩余燃烧帧数），玩家踩上会每秒扣血
+                self.dancer_burned_edges = {}
+                self.dancer_burn_timer = 0
+                if self.phase == 2:
+                    # 二阶段：只剩一只追击者（游荡者已败），速度 1.5 倍，走过路径燃烧
+                    self.bullets.append(DancerChaser(self.dancer_head_img, self.dancer_grid_cols,
+                                                     self.dancer_grid_rows, (1, 0), "chase",
+                                                     phase2=True, burned_edges=self.dancer_burned_edges))
+                else:
+                    # 左右各一只，左追右游荡（错峰）
+                    self.bullets.append(DancerChaser(self.dancer_head_img, self.dancer_grid_cols, self.dancer_grid_rows, (1, 0), "chase"))
+                    self.bullets.append(DancerChaser(self.dancer_head_img, self.dancer_grid_cols, self.dancer_grid_rows, (1, 2), "wander"))
+                self.dialog_text = "* 双生舞怜 摆开了阵势。"
+            else:
+                self.active_skills = ["soviet_emblem"]
+                # 苏联国徽单摆：金色地球 + 下半圆下摆，玩家挂在摆锤上沿下摆弧摆动
+                self.pend_pivot = (self.battle_box.centerx, self.battle_box.top + 90)
+                self.pend_len = 120
+                self.pend_angle = 0.0
+                self.pend_omega = 0.0
+                self.pend_damping = 0.99
+                self.pend_max_angle = 1.57   # 半圆（摆到左右水平）
+                if self.phase == 2:
+                    # 二阶段：中央重力域（覆盖整条单摆的圆形力场），只剩一只舞者
+                    self.pend_k = 0.008          # 更强重力（一阶段 0.004 的两倍）
+                    self.pend_torque = 0.0025
+                    self.grav_pulse_interval = 150   # 重力脉冲周期 2.5s
+                    self.grav_pulse_duration = 45    # 每次脉冲持续 0.75s
+                    self.grav_pulse_k_mult = 4.0     # 脉冲期间重力 ×4
+                    self.grav_pulse_torque_mult = 0.35  # 脉冲期间玩家力矩 ×0.35
+                    self.grav_pulse_timer = 0
+                    self.grav_pulse_on = False
+                else:
+                    self.pend_k = 0.004
+                    self.pend_torque = 0.0025
+                bx = self.pend_pivot[0] + self.pend_len * math.sin(self.pend_angle)
+                by = self.pend_pivot[1] + self.pend_len * math.cos(self.pend_angle)
+                self.heart_pos[0] = bx - self.heart_rect.width / 2.0
+                self.heart_pos[1] = by - self.heart_rect.height / 2.0
+                self.heart_rect.x = int(self.heart_pos[0])
+                self.heart_rect.y = int(self.heart_pos[1])
+                if self.phase == 2:
+                    # 二阶段：只剩一只舞者，速度 +20%，每次冲刺后横/竖轨迹交替
+                    self.bullets.append(DancerRail(self.dancer_head_img, self.battle_box, "vertical", 0, phase2=True))
+                else:
+                    # 一阶段两个舞者：一竖轨、一横轨（横轨延迟 45 帧错峰）
+                    self.bullets.append(DancerRail(self.dancer_head_img, self.battle_box, "vertical", 0))
+                    self.bullets.append(DancerRail(self.dancer_head_img, self.battle_box, "horizontal", 45))
+                self.dialog_text = "* 双生舞怜 铭刻了赤色纹章。"
         else:
              # Default behavior for other enemies (if any)
              self.active_skills = self.enemy_data.get("skills", [])
@@ -744,8 +979,8 @@ class BattleManager(BulletSpawnMixin, MenuMixin, ShieldMixin, RenderMixin):
                     self.shake_intensity = 10
                     # Check death immediately?
                     if self.player.hp <= 0:
-                        self.handle_player_death()
-                        return
+                        if self.handle_player_death():
+                            return
 
             # Reset Shield Mode immediately if active
             if hasattr(self, 'is_shield_mode') and self.is_shield_mode:
@@ -767,6 +1002,7 @@ class BattleManager(BulletSpawnMixin, MenuMixin, ShieldMixin, RenderMixin):
             self.dusts = []
             self.debris_particles = []
             self.wind_force = [0, 0]
+            self._apply_regen()
             if self.enemy_hp < 20:
                 self.dialog_text = "* 机器人的核心正在过载。"
             else:
@@ -828,6 +1064,60 @@ class BattleManager(BulletSpawnMixin, MenuMixin, ShieldMixin, RenderMixin):
                 
                 self.heart_vy += self.gravity
                 dy = self.heart_vy
+            elif "conveyor_belt" in self.active_skills:
+                # 轨道跑酷：上下切轨由 handle_input 的 KEYDOWN 处理；左右可慢速横移（半速）
+                dx = 0
+                dy = 0
+                if keys[pygame.K_LEFT] or keys[pygame.K_a]: dx = -self.heart_speed * 0.5
+                if keys[pygame.K_RIGHT] or keys[pygame.K_d]: dx = self.heart_speed * 0.5
+            elif "pendulum" in self.active_skills or "soviet_emblem" in self.active_skills:
+                # 单摆（重力摆锤 / 苏联国徽下摆）：左右键施加力矩，重力回复
+                dx = 0
+                dy = 0
+                k = self.pend_k
+                torque = self.pend_torque
+                # 二阶段重力域：周期性重力脉冲（期间重力骤增、玩家力矩被压制，摆锤被拽向底部）
+                if self.phase == 2 and "soviet_emblem" in self.active_skills:
+                    self.grav_pulse_timer += 1
+                    self.grav_pulse_on = ((self.grav_pulse_timer % self.grav_pulse_interval) < self.grav_pulse_duration)
+                    if self.grav_pulse_on:
+                        k = self.pend_k * self.grav_pulse_k_mult
+                        torque = self.pend_torque * self.grav_pulse_torque_mult
+                self.pend_omega += -k * math.sin(self.pend_angle)
+                if keys[pygame.K_LEFT] or keys[pygame.K_a]: self.pend_omega -= torque
+                if keys[pygame.K_RIGHT] or keys[pygame.K_d]: self.pend_omega += torque
+                self.pend_omega *= self.pend_damping
+                self.pend_angle += self.pend_omega
+                if self.pend_angle > self.pend_max_angle:
+                    self.pend_angle = self.pend_max_angle
+                    self.pend_omega = 0.0
+                elif self.pend_angle < -self.pend_max_angle:
+                    self.pend_angle = -self.pend_max_angle
+                    self.pend_omega = 0.0
+            elif "dancer_chase" in self.active_skills:
+                # 田字格追逐：玩家沿虚线网格行走（节点处转向，边中间可掉头）
+                dx = 0
+                dy = 0
+                ix = 0
+                iy = 0
+                if keys[pygame.K_LEFT] or keys[pygame.K_a]: ix = -1
+                elif keys[pygame.K_RIGHT] or keys[pygame.K_d]: ix = 1
+                if keys[pygame.K_UP] or keys[pygame.K_w]: iy = -1
+                elif keys[pygame.K_DOWN] or keys[pygame.K_s]: iy = 1
+                if ix != 0 and iy != 0:
+                    iy = 0  # 斜向输入只取水平，避免脱离虚线
+                if self.dancer_ptarget is None and (ix != 0 or iy != 0):
+                    r, c = self.dancer_pgrid
+                    nr, nc = r + iy, c + ix
+                    if 0 <= nr < 3 and 0 <= nc < 3:
+                        self.dancer_ptarget = (nr, nc)
+                elif self.dancer_ptarget is not None and (ix != 0 or iy != 0):
+                    r, c = self.dancer_pgrid
+                    tr, tc = self.dancer_ptarget
+                    move = (tr - r, tc - c)
+                    if (iy, ix) == (-move[0], -move[1]):
+                        # 掉头
+                        self.dancer_pgrid, self.dancer_ptarget = self.dancer_ptarget, self.dancer_pgrid
             else:
                 if keys[pygame.K_LEFT] or keys[pygame.K_a]: dx = -self.heart_speed
                 if keys[pygame.K_RIGHT] or keys[pygame.K_d]: dx = self.heart_speed
@@ -881,6 +1171,36 @@ class BattleManager(BulletSpawnMixin, MenuMixin, ShieldMixin, RenderMixin):
         
         self.heart_pos[0] += dx + self.wind_force[0]
         self.heart_pos[1] += dy + self.wind_force[1]
+
+        # UFO 牵引：红心落在重力列内时被持续向上吸（往下按可对抗）
+        if "ufo_tractor" in self.active_skills:
+            if not hasattr(self, 'ufo_gravity_col'):
+                self.ufo_gravity_col = random.randint(0, 2)
+            if not hasattr(self, 'ufo_gravity_time'):
+                self.ufo_gravity_time = 0
+            col_w = self.battle_box.width // 3
+            g_left = self.battle_box.left + self.ufo_gravity_col * col_w
+            g_right = g_left + col_w
+            if g_left <= self.heart_rect.centerx <= g_right:
+                self.heart_pos[1] -= 0.6
+                self.ufo_gravity_time += 1
+                if self.heart_rect.top <= self.battle_box.top + 5:
+                    # 被吸到顶层贴边：无 3s 宽限，立即开始，每 1s（60 帧）掉 1 血
+                    should_damage = (self.ufo_gravity_time % 60 == 0)
+                else:
+                    # 逗留超过 3s 后，每 1.5s（90 帧）掉 1 血
+                    should_damage = (self.ufo_gravity_time > 180 and (self.ufo_gravity_time - 180) % 90 == 0)
+                if should_damage:
+                    self.player.hp -= 1
+                    if self.player.hp < 0: self.player.hp = 0
+                    self.shake_intensity = 10
+                    self.damage_flash_timer = 6
+                    self._spawn_damage_popup(1, (200, 120, 255), self.heart_rect.topright, timer=60)
+                    if self.player.hp <= 0:
+                        self.handle_player_death()
+            else:
+                self.ufo_gravity_time = 0
+
         self.heart_pos[0] = max(self.battle_box.left + 5, min(self.heart_pos[0], self.battle_box.right - self.heart_rect.width - 5))
         
         bottom_limit = self.battle_box.bottom - self.heart_rect.height - 5
@@ -892,6 +1212,97 @@ class BattleManager(BulletSpawnMixin, MenuMixin, ShieldMixin, RenderMixin):
                  self.heart_vy = 0
              elif self.heart_pos[1] <= self.battle_box.top + 5:
                  self.heart_vy = 0
+
+        # 轨道跑酷（废料传送带）：红心极快平滑平移到目标轨道（上下切轨由 handle_input 更新），x 保留慢速横移
+        if "conveyor_belt" in self.active_skills:
+            if not hasattr(self, 'conveyor_rail_index'):
+                self.conveyor_rail_index = 1
+            if not hasattr(self, 'conveyor_rail_ys'):
+                lane_h = self.battle_box.height // 3
+                self.conveyor_rail_ys = [self.battle_box.top + lane_h * (i + 0.5) for i in range(3)]
+            self.conveyor_rail_index = max(0, min(2, self.conveyor_rail_index))
+            target_y = self.conveyor_rail_ys[self.conveyor_rail_index] - self.heart_rect.height / 2.0
+            diff = target_y - self.heart_pos[1]
+            if abs(diff) < 1.5:
+                self.heart_pos[1] = target_y
+            else:
+                self.heart_pos[1] += diff * 0.6
+
+        # 单摆（重力摆锤 / 苏联国徽下摆）：红心定位到摆锤当前位置（圆形轨道）
+        if "pendulum" in self.active_skills or "soviet_emblem" in self.active_skills:
+            if not hasattr(self, 'pend_pivot'):
+                self.pend_pivot = (self.battle_box.centerx, self.battle_box.top)
+            if not hasattr(self, 'pend_len'):
+                self.pend_len = 150
+            if not hasattr(self, 'pend_angle'):
+                self.pend_angle = 0.0
+            bx = self.pend_pivot[0] + self.pend_len * math.sin(self.pend_angle)
+            by = self.pend_pivot[1] + self.pend_len * math.cos(self.pend_angle)
+            self.heart_pos[0] = bx - self.heart_rect.width / 2.0
+            self.heart_pos[1] = by - self.heart_rect.height / 2.0
+
+        # 双生舞怜·田字格追逐：玩家沿虚线网格平滑移动
+        if "dancer_chase" in self.active_skills:
+            cols = self.dancer_grid_cols
+            rows = self.dancer_grid_rows
+            pcx = self.heart_pos[0] + self.heart_rect.width / 2.0
+            pcy = self.heart_pos[1] + self.heart_rect.height / 2.0
+            # 燃烧边倒计时，到期熄灭（恢复普通虚线）
+            for key in list(self.dancer_burned_edges):
+                self.dancer_burned_edges[key] -= 1
+                if self.dancer_burned_edges[key] <= 0:
+                    del self.dancer_burned_edges[key]
+            # 二阶段：踩在燃烧路径上时，每秒扣 1 血（DoT）——按红心实际位置对每条燃烧边做点→线段距离判定，站/走都结算
+            on_burn = False
+            if self.dancer_burned_edges:
+                burn_r = self.heart_rect.width * 0.5 + 5  # 半颗红心 + 余量，站线上也判中
+                for (r1, c1), (r2, c2) in self.dancer_burned_edges:
+                    x1, y1 = cols[c1], rows[r1]
+                    x2, y2 = cols[c2], rows[r2]
+                    dx = x2 - x1
+                    dy = y2 - y1
+                    seg2 = dx * dx + dy * dy
+                    if seg2 == 0:
+                        d = math.hypot(pcx - x1, pcy - y1)
+                    else:
+                        t = ((pcx - x1) * dx + (pcy - y1) * dy) / seg2
+                        t = max(0.0, min(1.0, t))
+                        d = math.hypot(pcx - (x1 + t * dx), pcy - (y1 + t * dy))
+                    if d <= burn_r:
+                        on_burn = True
+                        break
+            if on_burn:
+                self.dancer_burn_timer += 1
+                if self.dancer_burn_timer >= 60:
+                    self.dancer_burn_timer = 0
+                    self.player.hp -= 1
+                    if self.player.hp < 0:
+                        self.player.hp = 0
+                    self.shake_intensity = 6
+                    self.damage_flash_timer = 4
+                    self._spawn_damage_popup(1, (255, 60, 60), self.heart_rect.topright, timer=40)
+                    if self.player.hp <= 0:
+                        self.handle_player_death()
+            else:
+                self.dancer_burn_timer = 0
+            if self.dancer_ptarget is not None:
+                tr, tc = self.dancer_ptarget
+                tx = cols[tc]
+                ty = rows[tr]
+                ddx = tx - pcx
+                ddy = ty - pcy
+                dist = math.hypot(ddx, ddy)
+                if dist <= self.heart_speed:
+                    pcx = float(tx)
+                    pcy = float(ty)
+                    self.dancer_pgrid = self.dancer_ptarget
+                    self.dancer_ptarget = None
+                else:
+                    pcx += ddx / dist * self.heart_speed
+                    pcy += ddy / dist * self.heart_speed
+            self.heart_pos[0] = pcx - self.heart_rect.width / 2.0
+            self.heart_pos[1] = pcy - self.heart_rect.height / 2.0
+
         self.heart_rect.x = int(self.heart_pos[0])
         self.heart_rect.y = int(self.heart_pos[1])
         
@@ -959,7 +1370,11 @@ class BattleManager(BulletSpawnMixin, MenuMixin, ShieldMixin, RenderMixin):
             
             is_hit = False
             
-            if b.type == "laser" or b.type == "plasma_blade" or b.type == "laser_network":
+            if b.type == "laser_trail":
+                 # 点到线段距离（二阶段技能1的发光红激光轨迹）
+                 if b.hit_test(self.heart_rect.centerx, self.heart_rect.centery, p_radius):
+                     is_hit = True
+            elif b.type == "laser" or b.type == "plasma_blade" or b.type == "laser_network" or b.type == "ufo_laser" or b.type == "conveyor_scrap" or b.type == "vertical_scrap":
                  # Rect collision for lasers/blades
                  if self.heart_rect.colliderect(check_rect):
                      is_hit = True
@@ -991,11 +1406,22 @@ class BattleManager(BulletSpawnMixin, MenuMixin, ShieldMixin, RenderMixin):
                     
                     self.shake_intensity = 10
                     self.damage_flash_timer = 6
-                    if b.type != "laser":
+                    if b.type != "laser" and b.type != "ufo_laser" and b.type != "dancer_head" and b.type != "dancer_chaser" and b.type != "dancer_rail":
                         self.bullets.remove(b)
+                    if b.type == "dancer_head":
+                        b.damaging = False  # 单次冲刺只结算一次伤害
+                    elif b.type == "dancer_chaser":
+                        b.on_hit()  # 追击命中后进入短暂冷却
+                    elif b.type == "dancer_rail":
+                        b.damaging = False  # 单次冲刺只结算一次伤害
                     
                     if self.player.hp <= 0:
                         self.handle_player_death()
+
+        # 二阶段技能组1：舞者黄金分割切割完成后，适度提前结束回合（留缓冲，不立刻结束）
+        if self.phase == 2 and "dancer_dash" in self.active_skills:
+            if not any(getattr(b, 'type', '') == "dancer_head" for b in self.bullets):
+                self.enemy_turn_timer = min(self.enemy_turn_timer, self.DANCER_DASH_FINISH_BUFFER)
 
         # Update Dusts (Skill A)
         if "escape_dust" in self.active_skills:
@@ -1018,13 +1444,25 @@ class BattleManager(BulletSpawnMixin, MenuMixin, ShieldMixin, RenderMixin):
                 
     def handle_player_death(self):
         if self.death_triggered:
-            return
+            return True
+        # 紧急保险丝：被动锁血一次，濒死时熔断保住 1 点生命并消耗道具
+        if self.player is not None and any(
+            isinstance(it, dict) and it.get("name") == "紧急保险丝"
+            for it in getattr(self.player, "inventory", [])
+        ):
+            self.player.remove_item("紧急保险丝", 1)
+            self.player.hp = 1
+            self.shake_intensity = 14
+            self.damage_flash_timer = 8
+            self.dialog_text = "* 紧急保险丝熔断了！你勉强撑住了一口气。"
+            return False
         self.death_triggered = True
-        
+
         self.player.hp = 0
         pygame.mixer.music.stop()
         self.battle_result = "lost"
         self.running = False
+        return True
 
 
 

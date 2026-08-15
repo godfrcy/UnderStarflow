@@ -1,7 +1,7 @@
 import pygame
 
-from engine.enemy_data import BATTLE_DATA, ABANDONED_ROBOT_DATA
-from entities.enemies import OverworldEnemy, Bonfire, FailureEnemy
+from engine.enemy_data import BATTLE_DATA, ABANDONED_ROBOT_DATA, ABANDONED_ROBOT_MK2_DATA, TWIN_DANCER_DATA, UFO_DATA
+from entities.enemies import OverworldEnemy, Bonfire, FailureEnemy, TwinDancer
 from entities.props import Prop
 from ui.effects import DataDust, FogGate, FogWall
 
@@ -131,6 +131,17 @@ def spawn_map_content(map_id, config, extra_obstacles, game_state, tile_manager,
             enemy.battle_data = dict(BATTLE_DATA["berserk_jump"])
             enemies_group.add(enemy)
 
+        # 紧急保险丝：管道噩梦1 左下角，被动锁血一次（濒死时熔断保住 1 点生命）
+        item_id = "pipe_1_emergency_fuse"
+        if item_id not in game_state.collected_items:
+            item_data = {
+                "id": "emergency_fuse",
+                "name": "紧急保险丝",
+                "type": "key_item",
+                "description": "濒死时自动熔断，锁住 1 点生命，保住一次性命。",
+            }
+            tile_manager.add_collectible(128 * 2, 128 * 3, "items/battery", item_data, "audio/bgm/new_items.wav", item_id=item_id, scale=0.5)
+
     elif map_id == "pipe_nightmare_3_3":
          # Use same Fog Wall logic as 1-3 if needed
          if extra_obstacles:
@@ -217,6 +228,44 @@ def spawn_map_content(map_id, config, extra_obstacles, game_state, tile_manager,
     elif map_id == "snow_1_3":
         pass
 
+    elif map_id == "pipe_nightmare_3_1":
+        # 废弃机器人MK2：管道噩梦3-1 加强版废弃机体，16 帧全用，动画放慢 60%
+        enemy_id = "pipe_nightmare_3_1_robot_mk2"
+        if enemy_id not in game_state.temp_killed_enemies:
+            enemy = OverworldEnemy(128 * 3, 128 * 3, "characters/enemies/abandoned_robot_mk2", "abandoned_robot_mk2", is_grid=True)
+            enemy.ANIM_SPEED = 10  # 放慢 60%（6 → 9.6 ≈ 10）
+            # 固定在地图最下面两行转圈式徘徊（整体上移 20px，避免贴图底贴边框），不主动追击玩家
+            # 巡逻路线整体左移一列（128px），让最左边也能走到
+            enemy.set_patrol_rect(min_x=0, min_y=492, max_x=512, max_y=620, speed=2.5)
+            enemy.battle_data = dict(ABANDONED_ROBOT_MK2_DATA, id=enemy_id)
+            enemies_group.add(enemy)
+
+        # UFO：管道噩梦3-1 偏右上角飞行器，原地悬浮（16 帧动画），体积 64→80（放大 25%）
+        ufo_id = "pipe_nightmare_3_1_ufo"
+        if ufo_id not in game_state.temp_killed_enemies:
+            ufo = OverworldEnemy(128 * 5, 128 * 1, "characters/enemies/ufo", "ufo", is_grid=True, custom_size=(80, 80))
+            ufo.battle_data = dict(UFO_DATA, id=ufo_id)
+            enemies_group.add(ufo)
+
+        # 纳米修复液(小)：管道噩梦3-1 左侧放置一枚
+        item_id = "pipe_3_1_nano_repair_01"
+        if item_id not in game_state.collected_items:
+            item_data = {
+                "id": "nano_repair_small",
+                "name": "纳米修复液(小)",
+                "type": "consumable",
+                "description": "纳米修复液。使用后每回合回复5点生命值，持续3回合。",
+            }
+            tile_manager.add_collectible(128 * 1, 128 * 2, "items/battery", item_data, "audio/bgm/new_items.wav", item_id=item_id, scale=0.5)
+
+    elif map_id == "pipe_nightmare_3_2":
+        # 双生舞怜（boss）：屏幕偏左下角，只向右跑 1.5s 再折返回原位，不主动追击；击败后不再刷新
+        enemy_id = "pipe_nightmare_3_2_twin_dancer"
+        if "pipe_3_2_boss" not in game_state.cleared_bosses:
+            enemy = TwinDancer(128, 576)  # 中心 (128, 576)：偏左下角
+            enemy.battle_data = dict(TWIN_DANCER_DATA, id=enemy_id)
+            enemies_group.add(enemy)
+
     elif map_id == "pipe_nightmare_2_3":
          # Add Monitor Prop in Middle
          # Map is 6x6 tiles (768x768). Middle is 384, 384.
@@ -242,6 +291,18 @@ def spawn_map_content(map_id, config, extra_obstacles, game_state, tile_manager,
 
              enemy.battle_data = dict(ABANDONED_ROBOT_DATA, id=robot_id)
              enemies_group.add(enemy)
+
+    elif map_id == "base_1":
+        # 归航信标：基地1-1 右下方，关键道具（无限使用），传送到任意已激活的篝火
+        item_id = "base_1_homing_beacon"
+        if item_id not in game_state.collected_items:
+            item_data = {
+                "id": "homing_beacon",
+                "name": "归航信标",
+                "type": "key_item",
+                "description": "发出归航信号，将你传送到任意已激活的篝火。无限使用。",
+            }
+            tile_manager.add_collectible(128 * 4, 128 * 5, "items/battery", item_data, "audio/bgm/new_items.wav", item_id=item_id, scale=0.5)
 
     elif map_id == "base_2":
         # Machine Soldier (机凯种)
@@ -270,5 +331,38 @@ def spawn_map_content(map_id, config, extra_obstacles, game_state, tile_manager,
             enemy.burst_range = 80    # center-distance (px) where she bursts; > collision range (57-70)
             enemy.battle_data = dict(BATTLE_DATA["admin"])
             enemies_group.add(enemy)
+
+    elif map_id == "base_4":
+        # 义军士兵（原男义军）：基地深层唯一敌人，左右巡逻 + 靠近追逐（义军见机凯种就杀）
+        enemy_id = "base_4_rebel_soldier"
+        if enemy_id not in game_state.temp_killed_enemies:
+            enemy = OverworldEnemy(
+                128 * 3, 128 * 4,
+                "characters/enemies/rebel_soldier", "rebel_soldier",
+                is_grid=True,
+                skip_frames=BATTLE_DATA["rebel_soldier"].get("skip_frames", []),
+                custom_size=(147, 147)  # 放大 15%（原 128x128）
+            )
+            enemy.set_wander_behavior(min_x=128, max_x=621, speed=1.0)  # 621 = 768 - 147，避免贴图越界
+            enemy.can_chase = True
+            enemy.vision_range = 300
+            enemy.chase_speed = 2.0
+            enemy.ANIM_SPEED = 12  # 动画再慢 50%（帧间隔 8 → 12，即原始 6 翻倍）
+            # 碰撞箱「缩水偏右」特化：left 缩 55（裁掉左侧留白+部分身体），right 缩 37，上下各缩。
+            # 想更偏右 → 加大 left；想右边更贴 → 加大 right。
+            enemy.collision_inset = (55, 12, 37, 5)
+            enemy.battle_data = dict(BATTLE_DATA["rebel_soldier"])
+            enemies_group.add(enemy)
+
+        # 纳米修复液(小)：基地深层放置一枚，战斗中使用后每回合回复5点生命值，持续3回合
+        item_id = "base_4_nano_repair_01"
+        if item_id not in game_state.collected_items:
+            item_data = {
+                "id": "nano_repair_small",
+                "name": "纳米修复液(小)",
+                "type": "consumable",
+                "description": "纳米修复液。使用后每回合回复5点生命值，持续3回合。",
+            }
+            tile_manager.add_collectible(128 * 2, 128 * 3, "items/battery", item_data, "audio/bgm/new_items.wav", item_id=item_id, scale=0.5)
 
     return fog_gates, fog_wall, fog_walls
