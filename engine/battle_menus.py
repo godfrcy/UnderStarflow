@@ -235,7 +235,7 @@ class MenuMixin:
                 
                 # Use Logic
                 if item_name == "投掷电池":
-                     damage = 20
+                     damage = 20 + (self.player.level - 1)  # 每级补正 +1 点伤害
                      self.enemy_hp -= damage
                      self._spawn_damage_popup(damage, (255, 0, 0), [self.enemy_rect.centerx, self.enemy_rect.top - 30])
                      if self.enemy_hp < 0: self.enemy_hp = 0
@@ -262,6 +262,22 @@ class MenuMixin:
                      self.action_text = f"* 你使用了测试道具，对敌人造成了 {damage} 点伤害！"
 
                      # 测试道具不消耗，方便反复秒杀
+                     self.current_phase = self.PHASE_PLAYER_ANIM
+                     self.next_phase_after_anim = self.PHASE_ENEMY_TURN
+                     self.action_timer = 90
+                     self.item_selection_idx = 0
+                elif item_name == "测试2":
+                     # 百分比伤害：打掉敌人一半血（不消耗，方便测试二阶段）
+                     damage = self.enemy_hp // 2
+                     if damage < 1:
+                         damage = 1
+                     self.enemy_hp -= damage
+                     self._spawn_damage_popup(damage, (255, 0, 0), [self.enemy_rect.centerx, self.enemy_rect.top - 30])
+                     if self.enemy_hp < 0: self.enemy_hp = 0
+
+                     self.action_text = f"* 你使用了测试2，对敌人造成了 {damage} 点伤害！"
+
+                     # 不消耗，方便反复测试
                      self.current_phase = self.PHASE_PLAYER_ANIM
                      self.next_phase_after_anim = self.PHASE_ENEMY_TURN
                      self.action_timer = 90

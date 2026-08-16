@@ -64,6 +64,9 @@ class BattleManager(BulletSpawnMixin, MenuMixin, ShieldMixin, RenderMixin):
         self.qte_target_zone = pygame.Rect(0, 0, 0, 0)
         self.qte_perfect_zone = pygame.Rect(0, 0, 0, 0)
         self.damage_multiplier = 0.0
+        self.difficulty = "explore"  # 难度（main.py 在 start_battle 前注入）
+        self.enemy_hp_mult = 1.0     # 敌人血量倍率
+        self.enemy_dmg_mult = 1.0    # 敌人伤害倍率
         
         # Combat Entities
         self.damage_popups = []
@@ -104,7 +107,7 @@ class BattleManager(BulletSpawnMixin, MenuMixin, ShieldMixin, RenderMixin):
         self.heart_rect = None
         self.heart_pos = [0.0, 0.0]
         self.heart_speed = 4
-        
+
         # Audio
         self.calibration_sfx = None
         
@@ -155,6 +158,21 @@ class BattleManager(BulletSpawnMixin, MenuMixin, ShieldMixin, RenderMixin):
         self.battle_box = pygame.Rect(0, 0, w, h)
         self.battle_box.center = self.original_battle_box.center
 
+    def _setup_spring_oscillator(self):
+        # 弹簧振子：红心锁定横置窄条中线，沿水平方向做简谐振动（回复力 + 外力 + 阻尼）
+        self.wind_force = [0, 0]
+        self.spring_center_x = self.battle_box.centerx
+        self.spring_disp = 0.0       # 相对平衡位置的位移（正=向右）
+        self.spring_vel = 0.0
+        self.spring_k = 0.01         # 回复力系数
+        self.spring_damping = 0.95   # 阻尼
+        self.spring_force = 0.5      # 左右键施加的外力
+        self.spring_y = self.battle_box.centery  # 红心纵坐标锁定
+        self.heart_pos[0] = self.spring_center_x - self.heart_rect.width / 2.0
+        self.heart_pos[1] = self.spring_y - self.heart_rect.height / 2.0
+        self.heart_rect.x = int(self.heart_pos[0])
+        self.heart_rect.y = int(self.heart_pos[1])
+
     def _exit_battle(self):
         self.current_phase = self.PHASE_PLAYER_ANIM
         self.should_exit_battle = True
@@ -180,10 +198,23 @@ class BattleManager(BulletSpawnMixin, MenuMixin, ShieldMixin, RenderMixin):
     def _spawn_damage_popup(self, val, color, pos, timer=90):
         self.damage_popups.append({'val': str(val), 'color': color, 'pos': list(pos), 'timer': timer})
 
+    def _apply_difficulty(self):
+        """按难度设置敌人数值系数：标准难度 血量 ×1.5、伤害 ×3。"""
+        if self.difficulty == "standard":
+            self.enemy_hp_mult = 1.5
+            self.enemy_dmg_mult = 3.0
+        else:
+            self.enemy_hp_mult = 1.0
+            self.enemy_dmg_mult = 1.0
+
+    def _enemy_damage(self, base):
+        """敌人对玩家的实际伤害（标准难度 ×3，四舍五入取整）。"""
+        return int(round(base * self.enemy_dmg_mult))
+
     def start_battle(self, player, enemy_data=None):
         self.player = player
         self.enemy_data = enemy_data if enemy_data else {
-            "name": "变量",
+            "name": "机凯种·变量",
             "hp": 50,
             "skills": ["laser", "cube", "circle", "thrust"],
             "acts": []
@@ -223,8 +254,16 @@ class BattleManager(BulletSpawnMixin, MenuMixin, ShieldMixin, RenderMixin):
         self.battle_box.centerx = self.screen.get_width() // 2
         self.is_shield_mode = False
         self.shield_arrows = []
+        # 失败之作专属状态也在此重置，避免上一场残留导致新战斗菜单回合丢边框/残留柱子
+        self.is_dual_shield = False
+        self.is_failure_gravity_hall = False
+        self.is_failure_laser_grid = False
+        self.failure_phase2 = False
+        self.hall_pillars = []
+        self.dual_bullets = []
         
-        self.enemy_hp = self.enemy_data.get("hp", 50)
+        self._apply_difficulty()
+        self.enemy_hp = int(round(self.enemy_data.get("hp", 50) * self.enemy_hp_mult))
         self.enemy_max_hp = self.enemy_hp
         self.enemy_turn_timer = self.ENEMY_TURN_DURATION
 
@@ -422,7 +461,49 @@ class BattleManager(BulletSpawnMixin, MenuMixin, ShieldMixin, RenderMixin):
     def handle_input(self, event):
         if not self.running: return
 
+        if event.type == pygame.KEYUP:
+            return
+
         if event.type == pygame.KEYDOWN:
+            # 二段跳：上键第一跳（地面），空中可再跳一次（仅重力压制技能）
+            if (self.current_phase == self.PHASE_ENEMY_TURN
+                    and "samurai_gravity_jump" in self.active_skills
+                    and event.key in (pygame.K_UP, pygame.K_w)):
+                if getattr(self, 'on_ground', False):
+                    self.heart_vy = getattr(self, 'jump_strength', -9)
+                    self.on_ground = False
+                    self.jump_count = 1
+                elif getattr(self, 'jump_count', 0) < 2:
+                    self.heart_vy = getattr(self, 'jump_strength', -9)
+                    self.jump_count = 2
+            # 重力走廊阶段3（幽灵斩）：上/左触发一次向左跳跃（一段跳，空中不可再跳）
+            if (self.current_phase == self.PHASE_ENEMY_TURN
+                    and getattr(self, 'is_failure_gravity_hall', False)
+                    and self.enemy_turn_timer <= 180
+                    and event.key in (pygame.K_UP, pygame.K_w, pygame.K_LEFT, pygame.K_a)):
+                if getattr(self, 'hall_on_ground', True):
+                    self.hall_jump_vx = -9.0   # 朝右视角：向左跳离地面
+                    self.hall_on_ground = False
+            # 失败之作二阶段1技能·重力幽灵斩：右墙=上/左向左跳；左墙=右向右跳；顶部=下向下跳（一段跳）
+            if (self.current_phase == self.PHASE_ENEMY_TURN
+                    and getattr(self, 'is_failure_laser_grid', False)
+                    and getattr(self, 'laser_gravity_phase', False)
+                    and getattr(self, 'laser_slash_spawned', False)):
+                if self.laser_gravity_dir == 'right':
+                    if event.key in (pygame.K_UP, pygame.K_w, pygame.K_LEFT, pygame.K_a):
+                        if getattr(self, 'laser_on_wall', True):
+                            self.laser_jump_vx = -9.0   # 向左跳离右墙
+                            self.laser_on_wall = False
+                elif self.laser_gravity_dir == 'left':
+                    if event.key in (pygame.K_RIGHT, pygame.K_d):
+                        if getattr(self, 'laser_on_wall', True):
+                            self.laser_jump_vx = 9.0    # 向右跳离左墙
+                            self.laser_on_wall = False
+                elif self.laser_gravity_dir == 'up':
+                    if event.key in (pygame.K_DOWN, pygame.K_s):
+                        if getattr(self, 'laser_on_ceiling', True):
+                            self.laser_jump_vy = 9.0    # 向下跳离天花板
+                            self.laser_on_ceiling = False
             if event.key == pygame.K_ESCAPE:
                 # Debug exit or menu cancel
                 if self.current_phase == self.PHASE_MENU:
@@ -578,44 +659,55 @@ class BattleManager(BulletSpawnMixin, MenuMixin, ShieldMixin, RenderMixin):
 
     def process_victory(self):
         self.victory_messages = []
-        enemy_name = self.enemy_data.get("name", "")
-        
+        enemy_id = self.enemy_data.get("id") or self.enemy_data.get("boss_id", "")
+
         # Determine drops
         exp_gain = 0
         items_gained = []
-        
-        if "黑游侠" in enemy_name:
+
+        if enemy_id == "base_5_boss":  # 义军头目
             items_gained.append("黑色游侠的动力炉")
             exp_gain = 5
             # Add item to player inventory
             self.player.inventory.append({"name": "黑色游侠的动力炉", "type": "key_item", "description": "黑游侠的核心部件", "tag": "boss_trophy"})
-            
-        elif "变量" in enemy_name:
-            exp_gain = 5
-            
-        elif "机凯种" in enemy_name:
+
+        elif enemy_id in ("snow_1_2_variable", "pipe_nightmare_1_laser", "pipe_nightmare_1_jump"):
+            # 机凯种·变量（含暴走特指·激光/跳跃，玩家眼里同一怪）
+            exp_gain = 20
+
+        elif enemy_id == "base_2_machine":  # 机凯种·常量
             exp_gain = 5
             items_gained.append("投掷电池")
             self.player.inventory.append({"name": "投掷电池", "type": "consumable", "description": "一次性电池"})
-            
-        elif "义军" in enemy_name or "admin" in enemy_name.lower():
+
+        elif enemy_id in ("base_3_admin", "base_4_rebel_soldier"):  # 机凯种·义军(女)/(男)
             exp_gain = 10
             items_gained.append("投掷电池")
             self.player.inventory.append({"name": "投掷电池", "type": "consumable", "description": "一次性电池"})
 
-        elif "废弃机器人" in enemy_name:
-            exp_gain = 10
-            
-        elif "鬼武士" in enemy_name:
-            exp_gain = 20
+        elif enemy_id == "pipe_nightmare_3_1_robot_mk2":  # 废弃机器人(Ⅱ型)
+            exp_gain = 35
+        elif enemy_id in ("pipe_nightmare_1_3_robot", "pipe_nightmare_2_3_robot"):  # 废弃机器人(Ⅰ型)
+            exp_gain = 30
+        elif enemy_id == "pipe_nightmare_3_1_ufo":  # 斯普特尼克
+            exp_gain = 35
+
+        elif enemy_id == "pipe_2_2_boss":  # 旧时代智械·鬼武士
+            exp_gain = 60
             items_gained.append("鬼武士的动力炉")
             self.player.inventory.append({"name": "鬼武士的动力炉", "type": "key_item", "description": "鬼武士的核心部件", "tag": "boss_trophy"})
 
-        elif "双生舞怜" in enemy_name:
-            exp_gain = 50
+        elif enemy_id == "pipe_nightmare_3_2_twin_dancer":  # 双生舞怜
+            exp_gain = 100
             items_gained.append("双生舞怜的动力炉")
             self.player.inventory.append({"name": "双生舞怜的动力炉", "type": "key_item", "description": "双生舞怜的核心部件", "tag": "boss_trophy"})
-            
+
+        elif enemy_id == "failure_enemy_01":  # 失败之作
+            exp_gain = 100
+            items_gained.append("失败之作的破损动力炉")
+            # 破损动力炉无法解析，故不加 boss_trophy 标签
+            self.player.inventory.append({"name": "失败之作的破损动力炉", "type": "key_item", "description": "失败之作的核心部件（已破损，无法解析）"})
+
         # Apply EXP
         if hasattr(self.player, "gain_exp"):
             self.player.gain_exp(exp_gain)
@@ -654,8 +746,8 @@ class BattleManager(BulletSpawnMixin, MenuMixin, ShieldMixin, RenderMixin):
             self.is_screen_inverted = False
             
         # Reset Battle Box if shrunk (for Skill C)
-        if "black_ranger_c" in self.active_skills or "black_ranger_b" in self.active_skills:
-             # Already handled by is_shield_mode for B, but C needs manual reset?
+        if "black_ranger_c" in self.active_skills or "black_ranger_b" in self.active_skills or "spring_oscillator" in self.active_skills:
+             # Already handled by is_shield_mode for B, but C/弹簧振子 need manual reset?
              # C doesn't use is_shield_mode.
              # So we must reset battle_box if it was modified.
              # Check if we have original box
@@ -679,22 +771,68 @@ class BattleManager(BulletSpawnMixin, MenuMixin, ShieldMixin, RenderMixin):
         # Mode A: Blue Spheres + Lasers
         # Mode B: White Particles
         enemy_name = self.enemy_data.get("name", "")
-        
-        # FailureEnemy Special Death Logic (Triggered on Enemy Turn Start)
-        if "failure_enemy" in self.enemy_data.get("id", ""):
-            # 若玩家已用电磁脉冲瓦解其秒杀机制，则不再即死，转而走普通攻击
-            if not self.failure_emp_used:
-                self.handle_player_death()
-                return
+        enemy_id = self.enemy_data.get("id") or self.enemy_data.get("boss_id", "")
 
-        if "变量" in enemy_name:
+        # FailureEnemy Special Death Logic (Triggered on Enemy Turn Start)
+        if "failure_enemy" in self.enemy_data.get("id", "") and not self.failure_emp_used:
+            # 未用电磁脉冲：杀意即死
+            self.handle_player_death()
+            return
+
+        # 失败之作：血量低于 55% 转二阶段（技能组1 由镜像双心变为 5×5 激光列）
+        if enemy_id == "failure_enemy_01" and not getattr(self, 'failure_phase2', False) \
+                and self.enemy_hp < self.enemy_max_hp * 0.55:
+            self.failure_phase2 = True
+            # 二阶段切换 BGM：梦魇
+            load_bgm("audio/bgm/nightmare.mp3", start_pos=0.0)
+            pygame.mixer.music.set_volume(self.enemy_data.get("bgm_volume", 1.0))
+
+        if enemy_id in ("snow_1_2_variable", "pipe_nightmare_1_laser", "pipe_nightmare_1_jump"):
+            # 机凯种·变量（含暴走特指·激光/跳跃，玩家眼里同一怪）
             if random.random() < 0.5:
                 self.active_skills = ["laser", "cube"]
-                self.dialog_text = "* 变量启动了歼灭模式 (Laser + Sphere)。"
+                self.dialog_text = f"* {enemy_name} 启动了歼灭模式 (Laser + Sphere)。"
             else:
                 self.active_skills = ["random_particles"]
-                self.dialog_text = "* 变量启动了散布模式 (Particles)。"
-        elif "机凯种" in enemy_name or "义军士兵" in enemy_name:
+                self.dialog_text = f"* {enemy_name} 启动了散布模式 (Particles)。"
+        elif enemy_id == "failure_enemy_01":
+            if getattr(self, 'failure_phase2', False):
+                # 二阶段：只使用技能组1「5×5 激光列 + 重力幽灵斩」
+                self.active_skills = ["failure_laser_grid"]
+                self.dialog_text = "* 失败之作 展开了扫描矩阵。"
+                self._setup_failure_laser_grid()
+            else:
+                # 一阶段轮换：1技能原版 → 走廊 → 1技能变体 → 走廊 → 循环
+                mod = self.turn_count % 4
+                if mod == 1:
+                    self.active_skills = ["failure_dual_shield"]
+                    self.dialog_text = "* 失败之作 展开了镜像护盾。"
+                    self._setup_failure_dual_shield(variant=False)
+                elif mod == 2:
+                    self.active_skills = ["failure_gravity_hall"]
+                    self.dialog_text = "* 失败之作 展开了一条重力走廊。"
+                    self._setup_failure_gravity_hall()
+                elif mod == 3:
+                    self.active_skills = ["failure_dual_shield"]
+                    self.dialog_text = "* 失败之作 展开了镜像护盾。"
+                    self._setup_failure_dual_shield(variant=True)
+                else:
+                    self.active_skills = ["failure_gravity_hall"]
+                    self.dialog_text = "* 失败之作 展开了一条重力走廊。"
+                    self._setup_failure_gravity_hall()
+        elif enemy_id == "base_4_rebel_soldier":
+            # 男性义军：两技能组交替——奇数回合激光网格，偶数回合弹簧振子
+            if self.turn_count % 2 == 1:
+                self.active_skills = ["laser_network"]
+                self.dialog_text = f"* {enemy_name} 启动了激光网格。"
+            else:
+                self.active_skills = ["spring_oscillator"]
+                self.dialog_text = f"* {enemy_name} 展开了弹簧振子力场。"
+                full_w = self.battle_box.width
+                self._shrink_box(full_w, 64)
+                self._setup_spring_oscillator()
+                self.enemy_turn_timer += 3 * 60   # 弹簧回合延长 3 秒
+        elif enemy_id == "base_2_machine":
              if random.random() < 0.5:
                 self.active_skills = ["ruin_cutting_sequence"]
                 self.dialog_text = f"* {enemy_name} 启动了切割序列。"
@@ -702,7 +840,7 @@ class BattleManager(BulletSpawnMixin, MenuMixin, ShieldMixin, RenderMixin):
                 self.active_skills = ["laser_network"]
                 self.dialog_text = f"* {enemy_name} 启动了激光网格。"
         # Black Ranger EX Logic
-        elif "黑游侠" in enemy_name:
+        elif enemy_id == "base_5_boss":
             # Clear previous test skills
             # Randomly select one skill from A, B, C
             
@@ -715,10 +853,10 @@ class BattleManager(BulletSpawnMixin, MenuMixin, ShieldMixin, RenderMixin):
             self.active_skills = [skill_choice]
             
             if skill_choice == "black_ranger_a":
-                self.dialog_text = "* 黑游侠EX 启动了全方位射击。"
+                self.dialog_text = "* 义军头目 启动了全方位射击。"
                 self.bullet_spawn_timer = 0
             elif skill_choice == "black_ranger_b":
-                self.dialog_text = "* 黑游侠EX 启动了反重力装置。"
+                self.dialog_text = "* 义军头目 启动了反重力装置。"
                 self.is_screen_inverted = True
                 
                 # Reuse Admin Shield Logic
@@ -733,7 +871,7 @@ class BattleManager(BulletSpawnMixin, MenuMixin, ShieldMixin, RenderMixin):
                 self._recenter_heart()
                 
             elif skill_choice == "black_ranger_c":
-                self.dialog_text = "* 黑游侠EX 启动了火力压制。"
+                self.dialog_text = "* 义军头目 启动了火力压制。"
                 
                 # Shrink Battle Box to Small Size (Width 120, Height Normal)
                 self._shrink_box(120)
@@ -741,14 +879,14 @@ class BattleManager(BulletSpawnMixin, MenuMixin, ShieldMixin, RenderMixin):
                 self._recenter_heart()
                 self.bullet_spawn_timer = 0
             
-        elif "admin" in enemy_name.lower():
+        elif enemy_id == "base_3_admin":
             # 1. Shield Mini-game
             # 2. Laser + Ruin Cutting
             # 3. Particles + Spheres
             r = random.random()
             if r < 0.33:
                 self.active_skills = ["admin_shield"]
-                self.dialog_text = "* Admin 启动了能量强袭。"
+                self.dialog_text = "* 机凯种·义军(女) 启动了能量强袭。"
                 # Setup Shield Mode
                 self.is_shield_mode = True
                 self.shield_dir = "UP"
@@ -759,26 +897,36 @@ class BattleManager(BulletSpawnMixin, MenuMixin, ShieldMixin, RenderMixin):
                 self._recenter_heart()
             elif r < 0.66:
                 self.active_skills = ["laser", "ruin_cutting_sequence"]
-                self.dialog_text = "* Admin 启动了混合歼灭模式 (Laser + Cut)。"
+                self.dialog_text = "* 机凯种·义军(女) 启动了混合歼灭模式 (Laser + Cut)。"
             else:
                 self.active_skills = ["random_particles", "cube"]
-                self.dialog_text = "* Admin 启动了粒子风暴模式 (Particle + Sphere)。"
-        elif "鬼武士" in enemy_name:
-             r = random.random()
-             if r < 0.33:
+                self.dialog_text = "* 机凯种·义军(女) 启动了粒子风暴模式 (Particle + Sphere)。"
+        elif enemy_id == "pipe_2_2_boss":
+             # 四技能随机，但避免连续两回合重复同一招
+             ghost_skills = ["dark_orb", "samurai_fire_walls", "samurai_gravity_jump", "ghost_slash"]
+             chosen = random.choice(ghost_skills)
+             if chosen == getattr(self, 'last_ghost_skill', None):
+                 chosen = random.choice([s for s in ghost_skills if s != chosen])
+             self.last_ghost_skill = chosen
+
+             if chosen == "dark_orb":
                  self.active_skills = ["dark_orb"]
-                 self.dialog_text = "* 鬼武士 释放了暗影球。"
-             elif r < 0.66:
+                 self.dialog_text = "* 旧时代智械·鬼武士 释放了暗影球。"
+             elif chosen == "samurai_fire_walls":
                  self.active_skills = ["samurai_fire_walls"]
-                 self.dialog_text = "* 鬼武士 释放了业火阵。"
-             else:
+                 self.dialog_text = "* 旧时代智械·鬼武士 释放了业火阵。"
+             elif chosen == "samurai_gravity_jump":
                  self.active_skills = ["samurai_gravity_jump"]
-                 self.dialog_text = "* 鬼武士 释放了重力压制。"
+                 self.dialog_text = "* 旧时代智械·鬼武士 释放了重力压制。"
                  self.heart_vy = 0
                  self.gravity = 0.6
                  self.jump_strength = -9
                  self.on_ground = True
-        elif "UFO" in enemy_name:
+                 self.jump_count = 0
+             else:
+                 self.active_skills = ["ghost_slash"]
+                 self.dialog_text = "* 旧时代智械·鬼武士 释放了幽灵斩。"
+        elif enemy_id == "pipe_nightmare_3_1_ufo":
             self.active_skills = ["ufo_tractor"]
             if self.turn_count == 1:
                 # 新战斗：激光列固定（左或右，整场不变）
@@ -790,8 +938,8 @@ class BattleManager(BulletSpawnMixin, MenuMixin, ShieldMixin, RenderMixin):
                 non_l = [c for c in range(3) if c != self.ufo_laser_col]
                 self.ufo_gravity_col = non_l[1] if self.ufo_gravity_col == non_l[0] else non_l[0]
             self.ufo_gravity_time = 0
-            self.dialog_text = "* UFO 启动了牵引光束。"
-        elif "废弃机器人MK2" in enemy_name:
+            self.dialog_text = "* 斯普特尼克 启动了牵引光束。"
+        elif enemy_id == "pipe_nightmare_3_1_robot_mk2":
             # 两个技能组交替：奇数回合=废料传送带（切轨），偶数回合=重力摆锤（单摆）
             if self.turn_count % 2 == 1:
                 self.active_skills = ["conveyor_belt"]
@@ -804,7 +952,7 @@ class BattleManager(BulletSpawnMixin, MenuMixin, ShieldMixin, RenderMixin):
                 self.heart_pos[1] = self.conveyor_rail_ys[1] - self.heart_rect.height / 2.0
                 self.heart_rect.x = int(self.heart_pos[0])
                 self.heart_rect.y = int(self.heart_pos[1])
-                self.dialog_text = "* 废弃机器人MK2 启动了废料传送带。"
+                self.dialog_text = "* 废弃机器人(Ⅱ型) 启动了废料传送带。"
             else:
                 self.active_skills = ["pendulum"]
                 self.wind_force = [0, 0]
@@ -826,8 +974,8 @@ class BattleManager(BulletSpawnMixin, MenuMixin, ShieldMixin, RenderMixin):
                 self.heart_pos[1] = by - self.heart_rect.height / 2.0
                 self.heart_rect.x = int(self.heart_pos[0])
                 self.heart_rect.y = int(self.heart_pos[1])
-                self.dialog_text = "* 废弃机器人MK2 启动了重力摆锤。"
-        elif "双生舞怜" in enemy_name:
+                self.dialog_text = "* 废弃机器人(Ⅱ型) 启动了重力摆锤。"
+        elif enemy_id == "pipe_nightmare_3_2_twin_dancer":
             self.wind_force = [0, 0]
             # 加载单个舞者头颅像（65 开头资源），裁剪透明边后缩放（两技能共用）
             if not hasattr(self, 'dancer_head_img'):
@@ -883,9 +1031,8 @@ class BattleManager(BulletSpawnMixin, MenuMixin, ShieldMixin, RenderMixin):
                 self.heart_pos[1] = self.dancer_grid_rows[1] - self.heart_rect.height / 2.0
                 self.heart_rect.x = int(self.heart_pos[0])
                 self.heart_rect.y = int(self.heart_pos[1])
-                # 燃烧路径：二阶段追击者走过的边集合（边 → 剩余燃烧帧数），玩家踩上会每秒扣血
+                # 燃烧路径：二阶段追击者走过的边集合（边 → 剩余燃烧帧数），玩家完整经过会一次性扣 2 血
                 self.dancer_burned_edges = {}
-                self.dancer_burn_timer = 0
                 if self.phase == 2:
                     # 二阶段：只剩一只追击者（游荡者已败），速度 1.5 倍，走过路径燃烧
                     self.bullets.append(DancerChaser(self.dancer_head_img, self.dancer_grid_cols,
@@ -966,6 +1113,550 @@ class BattleManager(BulletSpawnMixin, MenuMixin, ShieldMixin, RenderMixin):
                 my = random.randint(self.battle_box.top + 50, self.battle_box.bottom - 50)
                 self.magnets.append({'pos': [mx, my], 'rect': pygame.Rect(mx-10, my-10, 20, 20)})
 
+    def _setup_failure_dual_shield(self, variant=False):
+        """失败之作技能组1「镜像双心」：左右两个对称区域，中间挡板，各一锁心红心 + 能量护盾。
+        variant=False 原版：左半场上刷、右半场右刷；variant=True 变体：左半场下刷、右半场从挡板左刷。"""
+        box = self.battle_box
+        side = 120   # 每个区域边长
+        gap = 112    # 两个区域相隔的距离（中间挡板区）
+        cy = box.centery
+        left_cx = box.centerx - gap / 2.0 - side / 2.0
+        right_cx = box.centerx + gap / 2.0 + side / 2.0
+        self.is_dual_shield = True
+        self.dual_shield_variant = variant
+        # 左右两个对称区域矩形
+        self.dual_left_rect = pygame.Rect(int(left_cx - side / 2.0), int(cy - side / 2.0), side, side)
+        self.dual_right_rect = pygame.Rect(int(right_cx - side / 2.0), int(cy - side / 2.0), side, side)
+        # 红心锁在各自区域中央
+        self.dual_left_center = [float(self.dual_left_rect.centerx), float(self.dual_left_rect.centery)]
+        self.dual_right_center = [float(self.dual_right_rect.centerx), float(self.dual_right_rect.centery)]
+        if variant:
+            self.left_shield_dir = "DOWN"   # 变体：左护盾朝下，挡从正下方刷来的箭头
+            self.right_shield_dir = "LEFT"  # 变体：右护盾朝左，挡从左边挡板刷来的箭头
+        else:
+            self.left_shield_dir = "UP"     # 原版：左护盾朝上，挡从正上方刷来的箭头
+            self.right_shield_dir = "RIGHT" # 原版：右护盾朝右，挡从正右方刷来的箭头
+        self.dual_bullets = []
+        self.dual_bullet_timer = 0
+        self.dual_right_bullet_timer = 0   # 变体右半场独立刷新计时（减缓 25%）
+        self.dual_right_next_type = 'white'  # 变体右半场下一发颜色（固定一白一蓝交替）
+        self.left_shield_broken_timer = 0   # 左护盾被蓝箭头打破后的失效倒计时（3 秒）
+        self.right_shield_broken_timer = 0  # 右护盾同理
+        # 主红心立即锁到左心（右心由 update_failure_dual_shield 用独立坐标管理）
+        self.heart_pos[0] = self.dual_left_center[0] - self.heart_rect.width / 2.0
+        self.heart_pos[1] = self.dual_left_center[1] - self.heart_rect.height / 2.0
+        self.heart_rect.x = int(self.heart_pos[0])
+        self.heart_rect.y = int(self.heart_pos[1])
+
+    def _dual_shield_rect(self, center, direction):
+        """返回护盾矩形（复用能量护盾的视觉/尺寸），护盾挡「从该方向来」的子弹。"""
+        cx, cy = center
+        shield_dist = 25
+        shield_len = 32
+        shield_thick = 5
+        if direction == "UP":
+            return pygame.Rect(cx - shield_len // 2, cy - shield_dist - shield_thick, shield_len, shield_thick)
+        if direction == "DOWN":
+            return pygame.Rect(cx - shield_len // 2, cy + shield_dist, shield_len, shield_thick)
+        if direction == "LEFT":
+            return pygame.Rect(cx - shield_dist - shield_thick, cy - shield_len // 2, shield_thick, shield_len)
+        return pygame.Rect(cx + shield_dist, cy - shield_len // 2, shield_thick, shield_len)
+
+    def _dual_shield_hit(self, pos):
+        """红心被白色子弹命中：扣 2 血 + 反馈。"""
+        dmg = self._enemy_damage(2)
+        self.player.hp -= dmg
+        if self.player.hp < 0:
+            self.player.hp = 0
+        self.shake_intensity = 8
+        self.damage_flash_timer = 5
+        self._spawn_damage_popup(dmg, (255, 255, 255), pos, timer=40)
+        if self.player.hp <= 0:
+            self.handle_player_death()
+
+    def update_failure_dual_shield(self):
+        """双心护盾（义军头目式箭头弹幕）：箭头从足够远的地方刷来，朝对应红心飞去。
+        左半场：从屏幕最上方（固定 x = 左心中心）竖直向下，单线轨迹。
+        右半场：从正右方（固定 y = 右心中心）水平向左，单线轨迹。
+        白色箭头：被护盾挡住，撞红心扣 2 血。
+        蓝色箭头：撞护盾会打破护盾（该侧 3 秒失效），撞红心无伤害（穿过）。
+        箭头随回合进度越来越快、越来越密。"""
+        lcx, lcy = self.dual_left_center
+        rcx, rcy = self.dual_right_center
+        progress = 1.0 - (self.enemy_turn_timer / self.ENEMY_TURN_DURATION)
+
+        # 护盾破损倒计时（左右独立，各 3 秒）
+        if self.left_shield_broken_timer > 0:
+            self.left_shield_broken_timer -= 1
+        if self.right_shield_broken_timer > 0:
+            self.right_shield_broken_timer -= 1
+
+        # 生成箭头（从足够远的地方，固定单线轨迹）
+        spawn_interval = max(25, int(47.5 - 20 * progress))
+        self.dual_bullet_timer += 1
+        if self.dual_bullet_timer >= spawn_interval:
+            self.dual_bullet_timer = 0
+            speed = 5.0 * self.bullet_speed_multiplier
+            if getattr(self, 'dual_shield_variant', False):
+                # 变体：左半场从最下方竖直向上（右半场独立计时、减缓 25%，见下方）
+                ltype = 'blue' if random.random() < 0.25 else 'white'
+                self.dual_bullets.append({'pos': [float(lcx), lcy + 300.0], 'dir': 'DOWN',
+                                          'speed': speed, 'type': ltype, 'side': 'left'})
+            else:
+                # 原版：左半场从最上方竖直向下；右半场从正右方水平向左（同帧同速）
+                ltype = 'blue' if random.random() < 0.25 else 'white'
+                self.dual_bullets.append({'pos': [float(lcx), lcy - 300.0], 'dir': 'UP',
+                                          'speed': speed, 'type': ltype, 'side': 'left'})
+                rtype = 'blue' if random.random() < 0.25 else 'white'
+                self.dual_bullets.append({'pos': [rcx + 300.0, float(rcy)], 'dir': 'RIGHT',
+                                          'speed': speed, 'type': rtype, 'side': 'right'})
+
+        # 变体右半场：独立计时，刷新间隔 +25%（减缓 25%），飞行速度 -25%，方便玩家反应
+        if getattr(self, 'dual_shield_variant', False):
+            self.dual_right_bullet_timer += 1
+            right_interval = max(1, int(spawn_interval * 1.25))
+            if self.dual_right_bullet_timer >= right_interval:
+                self.dual_right_bullet_timer = 0
+                speed = 5.0 * self.bullet_speed_multiplier
+                # 固定一白一蓝交替，方便玩家背板
+                rtype = getattr(self, 'dual_right_next_type', 'white')
+                self.dual_right_next_type = 'blue' if rtype == 'white' else 'white'
+                mid_x = (self.dual_left_rect.right + self.dual_right_rect.left) / 2.0
+                self.dual_bullets.append({'pos': [float(mid_x), float(rcy)], 'dir': 'LEFT',
+                                          'speed': speed * 0.75, 'type': rtype, 'side': 'right'})
+
+        right_rect = pygame.Rect(int(rcx - 16), int(rcy - 16), 32, 32)
+
+        for b in self.dual_bullets[:]:
+            cx, cy = (lcx, lcy) if b['side'] == 'left' else (rcx, rcy)
+            # 朝对应红心中心移动
+            dx = cx - b['pos'][0]
+            dy = cy - b['pos'][1]
+            d0 = math.hypot(dx, dy)
+            if d0 > 0:
+                b['pos'][0] += (dx / d0) * b['speed']
+                b['pos'][1] += (dy / d0) * b['speed']
+
+            # 移动后重新计算到中心的距离
+            dx = cx - b['pos'][0]
+            dy = cy - b['pos'][1]
+            dist_to_center = math.hypot(dx, dy)
+            btype = b.get('type', 'white')
+
+            if b['side'] == 'left':
+                shield_dir = self.left_shield_dir
+                shield_broken = self.left_shield_broken_timer > 0
+            else:
+                shield_dir = self.right_shield_dir
+                shield_broken = self.right_shield_broken_timer > 0
+
+            # 撞护盾（护盾未破损 + 进入护盾范围 + 方向匹配）
+            if not shield_broken and dist_to_center < 35 and b['dir'] == shield_dir:
+                if btype == 'blue':
+                    if b['side'] == 'left':
+                        self.left_shield_broken_timer = 180  # 蓝箭头破左盾
+                    else:
+                        self.right_shield_broken_timer = 180
+                    if self.calibration_sfx:
+                        self.calibration_sfx.set_volume(0.8)
+                        self.calibration_sfx.play()
+                else:
+                    # 白箭头被护盾抵消：播放挡弹音效（与义军头目/能量护盾一致）
+                    if self.calibration_sfx:
+                        self.calibration_sfx.set_volume(0.5)
+                        self.calibration_sfx.play()
+                self.dual_bullets.remove(b)
+                continue
+
+            # 撞红心
+            if dist_to_center < 10:
+                self.dual_bullets.remove(b)
+                if btype != 'blue':  # 蓝箭头穿心无伤害
+                    hit_pos = self.heart_rect.topright if b['side'] == 'left' else right_rect.topright
+                    self._dual_shield_hit(hit_pos)
+                continue
+
+    # ================= 失败之作二阶段·5×5 激光列 =================
+    def _setup_failure_laser_grid(self):
+        """失败之作二阶段技能组1「5×5 扫描矩阵」：战斗区域横向 5 等分，心自由移动（连续）。
+        4 轮动作：1 轮激光扫射 + 3 轮重力幽灵斩（方向随机：左/右墙竖斩、顶部横斩）。
+        左下/右下角感叹号频闪 2 次后，苗条竖激光条从感叹号侧快速平移，扫到绿色安全列前消失。"""
+        box = self.battle_box
+        self.is_failure_laser_grid = True
+        self.laser_grid_rect = box.copy()
+        self.laser_cell_w = box.width / 5.0   # 每列宽度（绿色安全列宽度）
+        self.laser_exclaim_side = random.choice(['left', 'right'])  # 感叹号在左下/右下
+        self.laser_state = 'warn'   # warn（感叹号频闪）→ active（激光条平移）
+        self.laser_timer = 0
+        self.laser_hit_cooldown = 0
+        self.laser_bar_w = 30                # 激光条宽度（苗条）
+        self.laser_bar_x = 0.0               # 激光条左边缘 x（平移位置）
+        self.laser_sweep_dir = 0             # +1 向右扫 / -1 向左扫
+        self.laser_sweep_speed = 11.0        # 每帧平移像素（快速，+10%）
+        # 4 轮动作：激光扫射随机插在任意一次，其余为斩（左/右/上随机）
+        _seq = ['slash', 'slash', 'slash', 'slash']
+        _seq[random.randint(0, 3)] = 'sweep'
+        self.laser_action_seq = _seq
+        self.laser_action_idx = 0
+        self.laser_gravity_phase = False     # 当前动作是否为斩（True=斩，False=扫射）
+        self.laser_gravity_dir = None        # 斩方向：'left'/'right'/'up'
+        self.laser_on_wall = True            # 水平斩：是否贴墙（左/右）
+        self.laser_jump_vx = 0.0             # 水平斩：跳跃水平速度
+        self.laser_on_ceiling = True         # 向上斩：是否贴顶（天花板）
+        self.laser_jump_vy = 0.0             # 向上斩：跳跃垂直速度（正=向下跳离）
+        self.laser_slash_spawned = False     # 当前斩是否已生成幽灵斩（吸引到位后）
+        self.laser_pull_vx = 0.0             # 水平吸引速度（重力加速，负=向左）
+        self.laser_pull_vy = 0.0             # 垂直吸引速度（负=向上）
+        # 回合延长：4 轮动作（1 扫射 + 3 斩）
+        self.enemy_turn_timer = self.ENEMY_TURN_DURATION + 8 * 60
+        # 心自由移动到战斗区域中央
+        self._recenter_heart()
+        # 若第一个动作就是斩，需立即进入斩动作（否则会因 laser_gravity_phase 初值 False 误走激光扫射分支）
+        if self.laser_action_seq[0] == 'slash':
+            self._start_laser_gravity()
+
+    def update_failure_laser_grid(self):
+        """按动作序列推进：1 轮激光扫射 → 3 轮重力幽灵斩，全部完成后回合收尾。"""
+        if self.laser_action_idx >= len(self.laser_action_seq):
+            # 全部动作完成，回合提前收尾
+            self.enemy_turn_timer = min(self.enemy_turn_timer, 15)
+            return
+        if not self.laser_gravity_phase:
+            self._update_laser_sweep()   # 当前动作：激光扫射（单轮）
+        else:
+            self._update_laser_gravity()  # 当前动作：重力幽灵斩
+            # 斩挥完 → 进入下一动作
+            if getattr(self, 'laser_slash_spawned', False) \
+                    and not any(getattr(b, 'type', '') == 'ground_slash' for b in self.bullets):
+                self._next_laser_action()
+
+    def _update_laser_sweep(self):
+        """单轮激光扫射：感叹号频闪 2 次 → 苗条激光条平移扫过 → 扫完进入下一动作。"""
+        box = self.battle_box
+        cw = int(self.laser_cell_w)
+        self.laser_timer += 1
+        self.laser_hit_cooldown = max(0, self.laser_hit_cooldown - 1)
+        if self.laser_state == 'warn':
+            if self.laser_timer >= 72:
+                # 频闪 2 次结束，激光条从感叹号那一侧刷出（绿色区的对侧）
+                self.laser_state = 'active'
+                self.laser_timer = 0
+                self.laser_hit_cooldown = 0
+                if self.laser_exclaim_side == 'left':
+                    # 绿色区在右，激光条从最左向右扫
+                    self.laser_bar_x = float(box.left)
+                    self.laser_sweep_dir = 1
+                else:
+                    # 绿色区在左，激光条从最右向左扫
+                    self.laser_bar_x = float(box.right - self.laser_bar_w)
+                    self.laser_sweep_dir = -1
+        elif self.laser_state == 'active':
+            # 激光条快速平移
+            self.laser_bar_x += self.laser_sweep_dir * self.laser_sweep_speed
+            bar_rect = pygame.Rect(int(self.laser_bar_x), box.top, self.laser_bar_w, box.height)
+            if self.heart_rect.colliderect(bar_rect) and self.laser_hit_cooldown <= 0:
+                dmg = self._enemy_damage(1)
+                self.player.hp -= dmg
+                if self.player.hp < 0:
+                    self.player.hp = 0
+                self.shake_intensity = 8
+                self.damage_flash_timer = 5
+                self._spawn_damage_popup(dmg, (80, 160, 255), self.heart_rect.topright, timer=40)
+                self.laser_hit_cooldown = 20
+                if self.player.hp <= 0:
+                    self.handle_player_death()
+            # 激光条扫到绿色安全列边界即消失，本轮结束
+            done = (self.laser_bar_x <= box.left + cw) if self.laser_sweep_dir < 0 \
+                else (self.laser_bar_x + self.laser_bar_w >= box.right - cw)
+            if done:
+                self._next_laser_action()
+
+    def _next_laser_action(self):
+        """当前动作结束，进入下一个动作（扫射/斩）。"""
+        self.laser_action_idx += 1
+        if self.laser_action_idx >= len(self.laser_action_seq):
+            return
+        if self.laser_action_seq[self.laser_action_idx] == 'slash':
+            self._start_laser_gravity()
+        else:
+            # 下一轮仍是扫射（当前序列不会发生，防御性处理）
+            self.laser_gravity_phase = False
+            self.laser_state = 'warn'
+            self.laser_timer = 0
+            self.laser_exclaim_side = random.choice(['left', 'right'])
+
+    def _start_laser_gravity(self):
+        """进入斩动作：设定重力方向（左/右/上），心先被重力加速吸到边缘（有过程）。"""
+        box = self.battle_box
+        self.laser_gravity_phase = True
+        self.laser_gravity_dir = random.choice(['left', 'right', 'up'])
+        self.laser_slash_spawned = False     # 幽灵斩未生成，先进入吸引阶段
+        if self.laser_gravity_dir in ('left', 'right'):
+            self.laser_pull_vx = 0.0         # 水平吸引速度从 0 加速
+            # 垂直轴一次性居中（吸引主轴是水平）
+            self.heart_pos[1] = float(box.centery - self.heart_rect.height / 2.0)
+            self.heart_rect.y = int(self.heart_pos[1])
+        else:
+            self.laser_pull_vy = 0.0         # 向上吸引速度从 0 加速（负=向上）
+            # 水平轴一次性居中（吸引主轴是垂直）
+            self.heart_pos[0] = float(box.centerx - self.heart_rect.width / 2.0)
+            self.heart_rect.x = int(self.heart_pos[0])
+
+    def _spawn_laser_gravity_slash(self):
+        """心被吸到边缘后刷出幽灵斩，进入贴边跳躲阶段。"""
+        from entities.bullets import GroundSlash
+        box = self.battle_box
+        self.laser_slash_spawned = True
+        if self.laser_gravity_dir == 'right':
+            self.bullets.append(GroundSlash(box, side='right'))   # 右墙竖斩
+            self.laser_on_wall = True
+            self.laser_jump_vx = 0.0
+        elif self.laser_gravity_dir == 'left':
+            self.bullets.append(GroundSlash(box, side='left'))    # 左墙竖斩
+            self.laser_on_wall = True
+            self.laser_jump_vx = 0.0
+        else:
+            self.bullets.append(GroundSlash(box, side='top'))     # 顶部横斩
+            self.laser_on_ceiling = True
+            self.laser_jump_vy = 0.0
+
+    def _update_laser_gravity(self):
+        """斩动作：吸引期心被重力加速吸到边缘（不再瞬移），到位刷幽灵斩；贴边期跳躲（一段跳）。"""
+        box = self.battle_box
+        if not self.laser_slash_spawned:
+            # ===== 吸引期：重力加速把心吸到边缘 =====
+            if self.laser_gravity_dir in ('left', 'right'):
+                sign = 1 if self.laser_gravity_dir == 'right' else -1
+                self.laser_pull_vx += 0.5 * sign
+                if abs(self.laser_pull_vx) > 8.0:
+                    self.laser_pull_vx = 8.0 * sign
+                self.heart_pos[0] += self.laser_pull_vx
+                if sign > 0:
+                    right_limit = float(box.right - self.heart_rect.width - 5)
+                    if self.heart_pos[0] >= right_limit:
+                        self.heart_pos[0] = right_limit
+                        self._spawn_laser_gravity_slash()
+                else:
+                    left_limit = float(box.left + 5)
+                    if self.heart_pos[0] <= left_limit:
+                        self.heart_pos[0] = left_limit
+                        self._spawn_laser_gravity_slash()
+                self.heart_rect.x = int(self.heart_pos[0])
+            else:  # 'up'
+                self.laser_pull_vy -= 0.5
+                if self.laser_pull_vy < -8.0:
+                    self.laser_pull_vy = -8.0
+                self.heart_pos[1] += self.laser_pull_vy
+                top_limit = float(box.top + 5)
+                if self.heart_pos[1] <= top_limit:
+                    self.heart_pos[1] = top_limit
+                    self._spawn_laser_gravity_slash()
+                self.heart_rect.y = int(self.heart_pos[1])
+        elif self.laser_gravity_dir in ('left', 'right'):
+            # ===== 贴边期：左右墙，跳离躲竖斩 =====
+            sign = 1 if self.laser_gravity_dir == 'right' else -1
+            wall_limit = float(box.right - self.heart_rect.width - 5) if sign > 0 else float(box.left + 5)
+            opp_limit = float(box.left + 5) if sign > 0 else float(box.right - self.heart_rect.width - 5)
+            if self.laser_on_wall:
+                self.heart_pos[0] = wall_limit
+            else:
+                self.laser_jump_vx += 0.6 * sign   # 受重力拉回墙
+                self.heart_pos[0] += self.laser_jump_vx
+                if (sign > 0 and self.heart_pos[0] >= wall_limit) or (sign < 0 and self.heart_pos[0] <= wall_limit):
+                    self.heart_pos[0] = wall_limit
+                    self.laser_jump_vx = 0.0
+                    self.laser_on_wall = True
+                elif (sign > 0 and self.heart_pos[0] < opp_limit) or (sign < 0 and self.heart_pos[0] > opp_limit):
+                    self.heart_pos[0] = opp_limit
+            self.heart_rect.x = int(self.heart_pos[0])
+        else:
+            # ===== 贴边期：顶部，下键跳离躲横斩 =====
+            top_limit = float(box.top + 5)
+            bottom_limit = float(box.bottom - self.heart_rect.height - 5)
+            if self.laser_on_ceiling:
+                self.heart_pos[1] = top_limit
+            else:
+                self.laser_jump_vy -= 0.6
+                self.heart_pos[1] += self.laser_jump_vy
+                if self.heart_pos[1] <= top_limit:
+                    self.heart_pos[1] = top_limit
+                    self.laser_jump_vy = 0.0
+                    self.laser_on_ceiling = True
+                elif self.heart_pos[1] > bottom_limit:
+                    self.heart_pos[1] = bottom_limit
+            self.heart_rect.y = int(self.heart_pos[1])
+
+    def _setup_failure_gravity_hall(self):
+        """失败之作技能组2「重力走廊」：横向长条，心向右自由落体（镜头跟随=走廊向左滚动）；
+        上下柱子留缝隙，玩家上下移动穿缝；柱子在右端滚入、左端滚出，形成无限循环。"""
+        self.is_failure_gravity_hall = True
+        # 该技能组回合延长 16 秒（共 24 秒）：前18秒下坠穿柱 → 18~21秒坠底 → 21~24秒幽灵斩
+        self.enemy_turn_timer = self.ENEMY_TURN_DURATION + 16 * 60
+        hall_w, hall_h = 700, 220
+        hall_x = (SCREEN_WIDTH - hall_w) // 2
+        hall_y = (SCREEN_HEIGHT - hall_h) // 2
+        self.hall_rect = pygame.Rect(hall_x, hall_y, hall_w, hall_h)
+        # 心固定在屏幕左侧锚点（镜头跟随心：视觉上心不动、走廊向后滚动），垂直居中
+        self.hall_anchor_x = float(hall_x + 140)
+        self.heart_pos[0] = self.hall_anchor_x
+        self.heart_pos[1] = float(self.hall_rect.centery - self.heart_rect.height / 2.0)
+        self.heart_rect.x = int(self.heart_pos[0])
+        self.heart_rect.y = int(self.heart_pos[1])
+        self.hall_heart_img = pygame.transform.rotate(self.heart_img, 90)  # 下方朝右
+        # 向右自由落体（加速度 = 镜头/柱子滚动的速度）
+        self.hall_gravity_active = False
+        self.hall_gravity_timer = 60          # 片刻（约 1 秒）后开始下坠
+        self.hall_vx = 0.0                    # 向右下坠速度
+        self.hall_gravity = 0.22              # 向右重力加速度
+        self.hall_max_vx = 8.0                # 下坠速度封顶
+        self.hall_gap = 22                    # 柱子世界间距（像素，密不可分）
+        self.hall_gap_h = 55                  # 柱子缝隙高度
+        self.hall_gap_phase = 0.0             # 缝隙中心正弦漂移相位
+        self.hall_gap_amp = 18                # 缝隙中心漂移幅度（px，视觉演出）
+        self.hall_gap_step = 0.18             # 每根柱子相位步进（相邻变化极小）
+        # 柱子（铺满长条，从右端滚入、左端滚出）
+        self.hall_pillars = []
+        self._spawn_hall_pillars()
+        self.hall_slash_init = False          # 幽灵斩阶段是否已初始化
+        self.hall_jump_vx = 0.0               # 阶段3跳跃水平速度（朝右视角=向左跳离地面）
+        self.hall_on_ground = True            # 是否在地面（贴最右边），一段跳判定
+
+    def _next_hall_gap_top(self):
+        """生成下一根柱子的缝隙顶部 y：缝隙中心沿正弦缓慢漂移，相邻柱子变化极小（偏视觉演出）。"""
+        hall = self.hall_rect
+        gap_h = self.hall_gap_h
+        low = hall.top + 15 + gap_h / 2.0
+        high = hall.bottom - 15 - gap_h / 2.0
+        center_mid = (low + high) / 2.0
+        amp = min(self.hall_gap_amp, (high - low) / 2.0)
+        center = center_mid + math.sin(self.hall_gap_phase) * amp
+        self.hall_gap_phase += self.hall_gap_step
+        return center - gap_h / 2.0
+
+    def _spawn_hall_pillars(self):
+        """在长条内铺满柱子的初始屏幕 x（间隔 hall_gap，缝隙正弦微漂）。"""
+        hall = self.hall_rect
+        gap_h = self.hall_gap_h
+        self.hall_pillars = []
+        x = self.hall_anchor_x + 100   # 从心的右侧开始铺，开场心左侧不落柱
+        while x < hall.right:
+            gap_top = self._next_hall_gap_top()
+            self.hall_pillars.append({'x': float(x), 'gap_top': gap_top, 'gap_h': gap_h})
+            x += self.hall_gap
+
+    def update_failure_gravity_hall(self):
+        """重力走廊三阶段：
+        阶段1（前18秒）：心向右加速自由落体（镜头跟随=走廊左滚），上下移动穿柱缝；
+        阶段2（18~21秒）：柱子停止刷新，心继续向右（重力方向不变）平安落在屏幕最右边；
+        阶段3（21~24秒）：幽灵斩在屏幕最右边刷（红色预警闪烁2次后挥刀），心上下移动躲过。"""
+        hall = self.hall_rect
+        timer = self.enemy_turn_timer
+
+        if timer > 360:
+            # ===== 阶段1：下坠穿柱 =====
+            if not self.hall_gravity_active:
+                self.hall_gravity_timer -= 1
+                if self.hall_gravity_timer <= 0:
+                    self.hall_gravity_active = True
+
+            if self.hall_gravity_active:
+                self.hall_vx += self.hall_gravity
+                if self.hall_vx > self.hall_max_vx:
+                    self.hall_vx = self.hall_max_vx
+
+            # 心屏幕 x 固定（镜头跟随）；y 由上下键移动，这里 clamp 到长条内
+            self.heart_pos[0] = self.hall_anchor_x
+            top_limit = hall.top + 5
+            bottom_limit = hall.bottom - self.heart_rect.height - 5
+            if self.heart_pos[1] < top_limit:
+                self.heart_pos[1] = top_limit
+            elif self.heart_pos[1] > bottom_limit:
+                self.heart_pos[1] = bottom_limit
+            self.heart_rect.x = int(self.heart_pos[0])
+            self.heart_rect.y = int(self.heart_pos[1])
+
+            # 走廊向左滚动（速度 = 下坠速度，越来越快）
+            for p in self.hall_pillars:
+                p['x'] -= self.hall_vx
+            self.hall_pillars = [p for p in self.hall_pillars if p['x'] >= hall.left]
+            rightmost = max((p['x'] for p in self.hall_pillars), default=hall.left)
+            if rightmost < hall.right - self.hall_gap:
+                gap_top = self._next_hall_gap_top()
+                self.hall_pillars.append({'x': float(hall.right), 'gap_top': gap_top, 'gap_h': self.hall_gap_h})
+
+            # 碰撞体积：柱子有实体，撞柱扣 2 血（每根只扣一次），并把心拱回正轨（缝隙内）
+            pillar_w = 20
+            shrink = 7
+            hitbox = pygame.Rect(self.heart_rect.x + shrink, self.heart_rect.y + shrink,
+                                 self.heart_rect.width - 2 * shrink, self.heart_rect.height - 2 * shrink)
+            for p in self.hall_pillars:
+                top_pillar = pygame.Rect(int(p['x']), hall.top, pillar_w, p['gap_top'] - hall.top)
+                bot_pillar = pygame.Rect(int(p['x']), p['gap_top'] + p['gap_h'], pillar_w, hall.bottom - (p['gap_top'] + p['gap_h']))
+                hit_top = top_pillar.colliderect(hitbox)
+                hit_bot = bot_pillar.colliderect(hitbox)
+                if hit_top or hit_bot:
+                    if not p.get('hit', False):
+                        p['hit'] = True
+                        self._dual_shield_hit(self.heart_rect.topright)
+                    if hit_top:
+                        self.heart_pos[1] = float(p['gap_top'] - shrink)
+                    elif hit_bot:
+                        self.heart_pos[1] = float(p['gap_top'] + p['gap_h'] - self.heart_rect.height + shrink)
+                    self.heart_rect.y = int(self.heart_pos[1])
+                    hitbox.y = self.heart_rect.y + shrink
+
+        elif timer > 180:
+            # ===== 阶段2：柱子停刷，心继续向右自由落体（重力方向不变），平安落在屏幕最右边 =====
+            if self.hall_gravity_active:
+                self.hall_vx += self.hall_gravity
+                if self.hall_vx > self.hall_max_vx:
+                    self.hall_vx = self.hall_max_vx
+
+            # 已有柱子继续滚完（不再刷入新柱）
+            for p in self.hall_pillars:
+                p['x'] -= self.hall_vx
+            self.hall_pillars = [p for p in self.hall_pillars if p['x'] >= hall.left]
+
+            # 心继续向右下坠到屏幕最右边（到达后停住），y 保持
+            self.heart_pos[0] += self.hall_vx
+            right_limit = hall.right - self.heart_rect.width - 5
+            if self.heart_pos[0] > right_limit:
+                self.heart_pos[0] = float(right_limit)
+            self.heart_rect.x = int(self.heart_pos[0])
+            self.heart_rect.y = int(self.heart_pos[1])
+
+        else:
+            # ===== 阶段3：幽灵斩（紧贴最右边的竖带），心保持朝右，上/左键一段跳向左躲 =====
+            if not getattr(self, 'hall_slash_init', False):
+                self.hall_slash_init = True
+                # 生成红色竖斩（紧贴最右边，素材原色不染色）
+                from entities.bullets import GroundSlash
+                self.bullets.append(GroundSlash(hall))
+                # 初始化跳跃：心贴最右边=地面，一段跳
+                self.heart_pos[0] = float(hall.right - self.heart_rect.width - 5)
+                self.hall_jump_vx = 0.0
+                self.hall_on_ground = True
+
+            right_limit = float(hall.right - self.heart_rect.width - 5)
+            left_limit = float(hall.left + 5)
+
+            if self.hall_on_ground:
+                # 地面：心贴最右边，等玩家按上/左跳
+                self.heart_pos[0] = right_limit
+            else:
+                # 空中：受向右重力拉回，向左跳出的心慢慢落回地面（一段跳，落地前不可再跳）
+                self.hall_jump_vx += 0.6
+                self.heart_pos[0] += self.hall_jump_vx
+                if self.heart_pos[0] >= right_limit:
+                    self.heart_pos[0] = right_limit
+                    self.hall_jump_vx = 0.0
+                    self.hall_on_ground = True
+                elif self.heart_pos[0] < left_limit:
+                    self.heart_pos[0] = left_limit
+
+            self.heart_rect.x = int(self.heart_pos[0])
+            self.heart_rect.y = int(self.heart_pos[1])
+
     def update_enemy_turn(self):
         self.enemy_turn_timer -= 1
         if self.enemy_turn_timer <= 0:
@@ -974,8 +1665,9 @@ class BattleManager(BulletSpawnMixin, MenuMixin, ShieldMixin, RenderMixin):
                 uncollected_count = len([d for d in self.dusts if not d.is_collected])
                 if uncollected_count > 0:
                     # Punishment: 5 DMG
-                    self.player.take_damage(5)
-                    self._spawn_damage_popup(5, (255, 0, 0), self.heart_rect.topright, timer=60)
+                    dmg = self._enemy_damage(5)
+                    self.player.take_damage(dmg)
+                    self._spawn_damage_popup(dmg, (255, 0, 0), self.heart_rect.topright, timer=60)
                     self.shake_intensity = 10
                     # Check death immediately?
                     if self.player.hp <= 0:
@@ -987,7 +1679,21 @@ class BattleManager(BulletSpawnMixin, MenuMixin, ShieldMixin, RenderMixin):
                 self.is_shield_mode = False
                 self.battle_box = self.original_battle_box
                 self._recenter_heart()
-            
+
+            # Reset Dual Shield (失败之作·镜像双心)
+            if getattr(self, 'is_dual_shield', False):
+                self.is_dual_shield = False
+                self.dual_bullets = []
+
+            # Reset Gravity Hall (失败之作·重力走廊)
+            if getattr(self, 'is_failure_gravity_hall', False):
+                self.is_failure_gravity_hall = False
+                self.hall_pillars = []
+
+            # Reset Laser Grid (失败之作·5×5 激光列)
+            if getattr(self, 'is_failure_laser_grid', False):
+                self.is_failure_laser_grid = False
+
             # Reset Screen Inversion
             if hasattr(self, 'is_screen_inverted') and self.is_screen_inverted:
                 self.is_screen_inverted = False
@@ -996,7 +1702,12 @@ class BattleManager(BulletSpawnMixin, MenuMixin, ShieldMixin, RenderMixin):
             if "black_ranger_c" in self.active_skills and hasattr(self, 'original_battle_box'):
                  self.battle_box = self.original_battle_box
                  self._recenter_heart()
-            
+
+            # 弹簧振子：回合结束恢复战斗框大小（菜单不再被压扁）
+            if "spring_oscillator" in self.active_skills and hasattr(self, 'original_battle_box'):
+                self.battle_box = self.original_battle_box
+                self._recenter_heart()
+
             self.current_phase = self.PHASE_MENU
             self.bullets = []
             self.dusts = []
@@ -1022,8 +1733,47 @@ class BattleManager(BulletSpawnMixin, MenuMixin, ShieldMixin, RenderMixin):
 
         # Player Movement
         keys = pygame.key.get_pressed()
-        
-        if self.is_shield_mode:
+
+        if getattr(self, 'is_dual_shield', False):
+            # 双心护盾（失败之作技能组1）：锁心不动；左护盾用上下键、右护盾用左右键（互不影响）
+            if keys[pygame.K_UP] or keys[pygame.K_w]:
+                self.left_shield_dir = "UP"
+            elif keys[pygame.K_DOWN] or keys[pygame.K_s]:
+                self.left_shield_dir = "DOWN"
+            if keys[pygame.K_LEFT] or keys[pygame.K_a]:
+                self.right_shield_dir = "LEFT"
+            elif keys[pygame.K_RIGHT] or keys[pygame.K_d]:
+                self.right_shield_dir = "RIGHT"
+            # 主红心锁为左心；右心由 update_failure_dual_shield 用独立坐标管理
+            self.heart_pos[0] = self.dual_left_center[0] - self.heart_rect.width / 2.0
+            self.heart_pos[1] = self.dual_left_center[1] - self.heart_rect.height / 2.0
+            dx, dy = 0, 0
+        elif getattr(self, 'is_failure_gravity_hall', False):
+            # 重力走廊（失败之作技能组2）：阶段1上下键穿缝；阶段3跳跃由 handle_input 的 KEYDOWN 触发；阶段2只向右坠
+            dx = 0
+            dy = 0
+            if self.enemy_turn_timer > 360:
+                # 阶段1：上下键自由移动穿缝
+                if keys[pygame.K_UP] or keys[pygame.K_w]:
+                    dy = -self.heart_speed
+                if keys[pygame.K_DOWN] or keys[pygame.K_s]:
+                    dy = self.heart_speed
+            # 阶段3：上/左键一段跳在 handle_input 的 KEYDOWN 处理，这里不持续移动
+            # 阶段2：dx=dy=0，由 update_failure_gravity_hall 让心向右坠到最右边
+        elif getattr(self, 'is_failure_laser_grid', False):
+            # 5×5 激光列（失败之作二阶段技能组1）：扫射阶段自由连续移动；重力阶段由 update 锁键
+            dx = 0
+            dy = 0
+            if not getattr(self, 'laser_gravity_phase', False):
+                if keys[pygame.K_UP] or keys[pygame.K_w]:
+                    dy = -self.heart_speed
+                if keys[pygame.K_DOWN] or keys[pygame.K_s]:
+                    dy = self.heart_speed
+                if keys[pygame.K_LEFT] or keys[pygame.K_a]:
+                    dx = -self.heart_speed
+                if keys[pygame.K_RIGHT] or keys[pygame.K_d]:
+                    dx = self.heart_speed
+        elif self.is_shield_mode:
             # Shield Control
             # Check for inversion (Skill B)
             is_inverted = hasattr(self, 'is_screen_inverted') and self.is_screen_inverted
@@ -1052,16 +1802,14 @@ class BattleManager(BulletSpawnMixin, MenuMixin, ShieldMixin, RenderMixin):
                 # Horizontal
                 if keys[pygame.K_LEFT] or keys[pygame.K_a]: dx = -self.heart_speed
                 if keys[pygame.K_RIGHT] or keys[pygame.K_d]: dx = self.heart_speed
-                
+
                 # Gravity & Jump
                 if not hasattr(self, 'heart_vy'): self.heart_vy = 0
                 if not hasattr(self, 'gravity'): self.gravity = 0.6
                 if not hasattr(self, 'jump_strength'): self.jump_strength = -9
-                
-                if (keys[pygame.K_UP] or keys[pygame.K_w] or keys[pygame.K_SPACE]) and self.on_ground:
-                    self.heart_vy = self.jump_strength
-                    self.on_ground = False
-                
+                if not hasattr(self, 'jump_count'): self.jump_count = 0
+
+                # 二段跳：起跳在 handle_input 的 KEYDOWN 中触发，这里只做重力下落
                 self.heart_vy += self.gravity
                 dy = self.heart_vy
             elif "conveyor_belt" in self.active_skills:
@@ -1094,6 +1842,22 @@ class BattleManager(BulletSpawnMixin, MenuMixin, ShieldMixin, RenderMixin):
                 elif self.pend_angle < -self.pend_max_angle:
                     self.pend_angle = -self.pend_max_angle
                     self.pend_omega = 0.0
+            elif "spring_oscillator" in self.active_skills:
+                # 弹簧振子：左右键施加外力，回复力 + 阻尼做简谐振动
+                dx = 0
+                dy = 0
+                if not hasattr(self, 'spring_disp'):
+                    self._setup_spring_oscillator()
+                self.spring_vel += -self.spring_k * self.spring_disp
+                if keys[pygame.K_LEFT] or keys[pygame.K_a]:
+                    self.spring_vel -= self.spring_force
+                if keys[pygame.K_RIGHT] or keys[pygame.K_d]:
+                    self.spring_vel += self.spring_force
+                self.spring_vel *= self.spring_damping
+                self.spring_vel = max(-8.0, min(8.0, self.spring_vel))
+                self.spring_disp += self.spring_vel
+                max_disp = self.battle_box.width / 2.0 - self.heart_rect.width / 2.0 - 5
+                self.spring_disp = max(-max_disp, min(self.spring_disp, max_disp))
             elif "dancer_chase" in self.active_skills:
                 # 田字格追逐：玩家沿虚线网格行走（节点处转向，边中间可掉头）
                 dx = 0
@@ -1191,25 +1955,29 @@ class BattleManager(BulletSpawnMixin, MenuMixin, ShieldMixin, RenderMixin):
                     # 逗留超过 3s 后，每 1.5s（90 帧）掉 1 血
                     should_damage = (self.ufo_gravity_time > 180 and (self.ufo_gravity_time - 180) % 90 == 0)
                 if should_damage:
-                    self.player.hp -= 1
+                    dmg = self._enemy_damage(1)
+                    self.player.hp -= dmg
                     if self.player.hp < 0: self.player.hp = 0
                     self.shake_intensity = 10
                     self.damage_flash_timer = 6
-                    self._spawn_damage_popup(1, (200, 120, 255), self.heart_rect.topright, timer=60)
+                    self._spawn_damage_popup(dmg, (200, 120, 255), self.heart_rect.topright, timer=60)
                     if self.player.hp <= 0:
                         self.handle_player_death()
             else:
                 self.ufo_gravity_time = 0
 
-        self.heart_pos[0] = max(self.battle_box.left + 5, min(self.heart_pos[0], self.battle_box.right - self.heart_rect.width - 5))
-        
-        bottom_limit = self.battle_box.bottom - self.heart_rect.height - 5
-        self.heart_pos[1] = max(self.battle_box.top + 5, min(self.heart_pos[1], bottom_limit))
+        # 重力走廊（失败之作技能组2）用独立横向长条边界，跳过通用战场 clamp
+        if not getattr(self, 'is_failure_gravity_hall', False):
+            self.heart_pos[0] = max(self.battle_box.left + 5, min(self.heart_pos[0], self.battle_box.right - self.heart_rect.width - 5))
+
+            bottom_limit = self.battle_box.bottom - self.heart_rect.height - 5
+            self.heart_pos[1] = max(self.battle_box.top + 5, min(self.heart_pos[1], bottom_limit))
 
         if "samurai_gravity_jump" in self.active_skills:
              if self.heart_pos[1] >= bottom_limit - 1:
                  self.on_ground = True
                  self.heart_vy = 0
+                 self.jump_count = 0
              elif self.heart_pos[1] <= self.battle_box.top + 5:
                  self.heart_vy = 0
 
@@ -1241,6 +2009,14 @@ class BattleManager(BulletSpawnMixin, MenuMixin, ShieldMixin, RenderMixin):
             self.heart_pos[0] = bx - self.heart_rect.width / 2.0
             self.heart_pos[1] = by - self.heart_rect.height / 2.0
 
+        # 弹簧振子：红心锁定横置窄条中线，水平方向由简谐振动决定
+        if "spring_oscillator" in self.active_skills:
+            if not hasattr(self, 'spring_disp'):
+                self._setup_spring_oscillator()
+            self.spring_center_x = self.battle_box.centerx
+            self.heart_pos[0] = self.spring_center_x + self.spring_disp - self.heart_rect.width / 2.0
+            self.heart_pos[1] = self.spring_y - self.heart_rect.height / 2.0
+
         # 双生舞怜·田字格追逐：玩家沿虚线网格平滑移动
         if "dancer_chase" in self.active_skills:
             cols = self.dancer_grid_cols
@@ -1252,39 +2028,7 @@ class BattleManager(BulletSpawnMixin, MenuMixin, ShieldMixin, RenderMixin):
                 self.dancer_burned_edges[key] -= 1
                 if self.dancer_burned_edges[key] <= 0:
                     del self.dancer_burned_edges[key]
-            # 二阶段：踩在燃烧路径上时，每秒扣 1 血（DoT）——按红心实际位置对每条燃烧边做点→线段距离判定，站/走都结算
-            on_burn = False
-            if self.dancer_burned_edges:
-                burn_r = self.heart_rect.width * 0.5 + 5  # 半颗红心 + 余量，站线上也判中
-                for (r1, c1), (r2, c2) in self.dancer_burned_edges:
-                    x1, y1 = cols[c1], rows[r1]
-                    x2, y2 = cols[c2], rows[r2]
-                    dx = x2 - x1
-                    dy = y2 - y1
-                    seg2 = dx * dx + dy * dy
-                    if seg2 == 0:
-                        d = math.hypot(pcx - x1, pcy - y1)
-                    else:
-                        t = ((pcx - x1) * dx + (pcy - y1) * dy) / seg2
-                        t = max(0.0, min(1.0, t))
-                        d = math.hypot(pcx - (x1 + t * dx), pcy - (y1 + t * dy))
-                    if d <= burn_r:
-                        on_burn = True
-                        break
-            if on_burn:
-                self.dancer_burn_timer += 1
-                if self.dancer_burn_timer >= 60:
-                    self.dancer_burn_timer = 0
-                    self.player.hp -= 1
-                    if self.player.hp < 0:
-                        self.player.hp = 0
-                    self.shake_intensity = 6
-                    self.damage_flash_timer = 4
-                    self._spawn_damage_popup(1, (255, 60, 60), self.heart_rect.topright, timer=40)
-                    if self.player.hp <= 0:
-                        self.handle_player_death()
-            else:
-                self.dancer_burn_timer = 0
+            # 二阶段：玩家完整经过一条燃烧红线时，一次性扣 2 血——在抵达目标节点时结算（见下方到达判定）
             if self.dancer_ptarget is not None:
                 tr, tc = self.dancer_ptarget
                 tx = cols[tc]
@@ -1295,6 +2039,19 @@ class BattleManager(BulletSpawnMixin, MenuMixin, ShieldMixin, RenderMixin):
                 if dist <= self.heart_speed:
                     pcx = float(tx)
                     pcy = float(ty)
+                    # 完整经过一条边：若刚走过的边是燃烧红线，一次性扣 2 血
+                    old_grid = self.dancer_pgrid
+                    new_grid = self.dancer_ptarget
+                    if tuple(sorted([old_grid, new_grid])) in self.dancer_burned_edges:
+                        dmg = self._enemy_damage(2)
+                        self.player.hp -= dmg
+                        if self.player.hp < 0:
+                            self.player.hp = 0
+                        self.shake_intensity = 8
+                        self.damage_flash_timer = 5
+                        self._spawn_damage_popup(dmg, (255, 60, 60), self.heart_rect.topright, timer=50)
+                        if self.player.hp <= 0:
+                            self.handle_player_death()
                     self.dancer_pgrid = self.dancer_ptarget
                     self.dancer_ptarget = None
                 else:
@@ -1319,6 +2076,12 @@ class BattleManager(BulletSpawnMixin, MenuMixin, ShieldMixin, RenderMixin):
         # Shield Mode Update
         if self.is_shield_mode:
             self.update_shield_minigame()
+        if getattr(self, 'is_dual_shield', False):
+            self.update_failure_dual_shield()
+        if getattr(self, 'is_failure_gravity_hall', False):
+            self.update_failure_gravity_hall()
+        if getattr(self, 'is_failure_laser_grid', False):
+            self.update_failure_laser_grid()
         
         # Bullet Updates & Collision
         enable_reroute = "reroute" in self.active_skills
@@ -1374,7 +2137,7 @@ class BattleManager(BulletSpawnMixin, MenuMixin, ShieldMixin, RenderMixin):
                  # 点到线段距离（二阶段技能1的发光红激光轨迹）
                  if b.hit_test(self.heart_rect.centerx, self.heart_rect.centery, p_radius):
                      is_hit = True
-            elif b.type == "laser" or b.type == "plasma_blade" or b.type == "laser_network" or b.type == "ufo_laser" or b.type == "conveyor_scrap" or b.type == "vertical_scrap":
+            elif b.type == "laser" or b.type == "plasma_blade" or b.type == "laser_network" or b.type == "ufo_laser" or b.type == "conveyor_scrap" or b.type == "vertical_scrap" or b.type == "ghost_slash" or b.type == "ground_slash":
                  # Rect collision for lasers/blades
                  if self.heart_rect.colliderect(check_rect):
                      is_hit = True
@@ -1401,12 +2164,12 @@ class BattleManager(BulletSpawnMixin, MenuMixin, ShieldMixin, RenderMixin):
 
 
                 if damage_allowed:
-                    self.player.hp -= getattr(b, 'damage', 1)
+                    self.player.hp -= self._enemy_damage(getattr(b, 'damage', 1))
                     if self.player.hp < 0: self.player.hp = 0 # Clamp HP
                     
                     self.shake_intensity = 10
                     self.damage_flash_timer = 6
-                    if b.type != "laser" and b.type != "ufo_laser" and b.type != "dancer_head" and b.type != "dancer_chaser" and b.type != "dancer_rail":
+                    if b.type != "laser" and b.type != "ufo_laser" and b.type != "dancer_head" and b.type != "dancer_chaser" and b.type != "dancer_rail" and b.type != "ghost_slash" and b.type != "ground_slash":
                         self.bullets.remove(b)
                     if b.type == "dancer_head":
                         b.damaging = False  # 单次冲刺只结算一次伤害

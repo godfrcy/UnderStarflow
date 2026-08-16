@@ -115,6 +115,70 @@ class TitleScreen:
             clock.tick(60)
         return self.next_action
 
+class DifficultyMenu:
+    """新游戏难度选择：探索难度（默认，面向轻度玩家）/ 标准难度（面向老手，数值待定）。"""
+
+    def __init__(self, screen):
+        self.screen = screen
+        self.width = screen.get_width()
+        self.height = screen.get_height()
+        self.options = ["探索难度", "标准难度"]
+        self.selected_index = 0
+        try:
+            self.font = get_font(36)
+            self.font_title = get_font(48)
+        except Exception:
+            self.font = pygame.font.Font(None, 36)
+            self.font_title = pygame.font.Font(None, 48)
+
+    def run(self):
+        clock = pygame.time.Clock()
+        running = True
+        result = None
+
+        while running:
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    return "quit"
+                elif event.type == pygame.KEYDOWN:
+                    if event.key in (pygame.K_UP, pygame.K_w):
+                        self.selected_index = (self.selected_index - 1) % len(self.options)
+                    elif event.key in (pygame.K_DOWN, pygame.K_s):
+                        self.selected_index = (self.selected_index + 1) % len(self.options)
+                    elif event.key in (pygame.K_RETURN, pygame.K_SPACE, pygame.K_z):
+                        result = "explore" if self.selected_index == 0 else "standard"
+                        running = False
+                    elif event.key in (pygame.K_ESCAPE, pygame.K_x):
+                        result = "back"
+                        running = False
+
+            # 绘制：黑底 + 标题 + 选项（居中）
+            self.screen.fill((0, 0, 0))
+
+            title_surf = self.font_title.render("选择难度", True, (255, 215, 0))
+            title_rect = title_surf.get_rect(center=(self.width // 2, self.height // 2 - 130))
+            self.screen.blit(title_surf, title_rect)
+
+            for i, opt in enumerate(self.options):
+                color = (255, 215, 0) if i == self.selected_index else (200, 200, 200)
+                text_surf = self.font.render(opt, True, color)
+                text_rect = text_surf.get_rect(center=(self.width // 2, self.height // 2 - 20 + i * 64))
+                self.screen.blit(text_surf, text_rect)
+
+                if i == self.selected_index:
+                    marker_x = text_rect.left - 28
+                    marker_y = text_rect.centery
+                    p1 = (marker_x, marker_y - 7)
+                    p2 = (marker_x, marker_y + 7)
+                    p3 = (marker_x + 12, marker_y)
+                    pygame.draw.polygon(self.screen, (255, 215, 0), [p1, p2, p3])
+
+            pygame.display.flip()
+            clock.tick(60)
+
+        return result
+
+
 class ConfirmDialog:
     def __init__(self, screen, text="确认返回标题界面？"):
         self.screen = screen
@@ -325,6 +389,10 @@ class TeleportMenu:
                         self.selected_index = (self.selected_index - 1) % len(self.options) if self.options else 0
                     elif event.key == pygame.K_RIGHT or event.key == pygame.K_d:
                         self.selected_index = (self.selected_index + 1) % len(self.options) if self.options else 0
+                    elif event.key == pygame.K_UP or event.key == pygame.K_w:
+                        self.selected_index = (self.selected_index - 2) % len(self.options) if self.options else 0
+                    elif event.key == pygame.K_DOWN or event.key == pygame.K_s:
+                        self.selected_index = (self.selected_index + 2) % len(self.options) if self.options else 0
                     elif event.key == pygame.K_RETURN or event.key == pygame.K_SPACE or event.key == pygame.K_z:
                         if self.options:
                             selected_dest_id = self.options[self.selected_index]["id"]
@@ -347,11 +415,10 @@ class TeleportMenu:
             # White Border (Thickness 4)
             pygame.draw.rect(self.screen, (255, 255, 255), (box_x, box_y, box_width, box_height), 4)
             
-            # Draw Options (4 per row)
-            # Currently we expect few, but logic should support grid
-            start_x = box_x + 50
-            start_y = box_y + 50
-            col_spacing = 200
+            # Draw Options (2 per row，换行避免溢出屏幕)
+            start_x = box_x + 60
+            start_y = box_y + 60
+            col_spacing = box_width // 2
             row_spacing = 60
             
             if not self.options:
@@ -360,8 +427,8 @@ class TeleportMenu:
                 self.screen.blit(text, text_rect)
             else:
                 for i, opt in enumerate(self.options):
-                    row = i // 4
-                    col = i % 4
+                    row = i // 2
+                    col = i % 2
                     
                     x = start_x + col * col_spacing
                     y = start_y + row * row_spacing
@@ -487,6 +554,7 @@ class BackpackMenu:
         # Requirement: First option is always "任务提示"
         mission_text = "任务提示"
         inventory_items = []
+        inventory_item_objs = []  # 与 inventory_items 对齐的物品 dict（供「使用」判断）
         if player and hasattr(player, 'inventory'):
             # Consolidate inventory before displaying to merge duplicates
             if hasattr(player, 'consolidate_inventory'):
@@ -500,13 +568,17 @@ class BackpackMenu:
                         inventory_items.append(f"{name} x{count}")
                     else:
                         inventory_items.append(name)
+                    inventory_item_objs.append(item)
                 else:
                     inventory_items.append("未知物品")
-        
+                    inventory_item_objs.append(None)
+
         if not inventory_items:
             inventory_items = ["(背包为空)"]
-        
+            inventory_item_objs = [None]
+
         self.full_list = [mission_text] + inventory_items
+        self.full_items = [None] + inventory_item_objs  # 第 0 项「任务提示」对应 None
 
     def run(self, player, bg_snapshot, dialogue_system):
         # 1. Physical Clear: Force disable any blockers
@@ -521,6 +593,7 @@ class BackpackMenu:
         
         clock = pygame.time.Clock()
         menu_running = True
+        use_result = "resume"
         
         # Mouse visibility fix
         pygame.mouse.set_visible(True)
@@ -536,6 +609,13 @@ class BackpackMenu:
                 result = self.handle_event(event)
                 if result == "close":
                     menu_running = False
+                elif result == "use":
+                    # 使用物品：目前仅归航信标可用（打开篝火传送菜单）
+                    item = self.full_items[self.selected_index] if self.selected_index < len(self.full_items) else None
+                    if item and item.get("id") == "homing_beacon":
+                        use_result = "use_homing_beacon"
+                        menu_running = False
+                    # 其余物品暂无使用功能，忽略
         
             # 2. Render Layer: Snapshot -> UI (Always Execute)
             self.draw(bg_snapshot)
@@ -544,7 +624,7 @@ class BackpackMenu:
         
         # Cleanup
         pygame.event.pump()
-        return "resume"
+        return use_result
 
 
     def handle_event(self, event):
@@ -561,6 +641,8 @@ class BackpackMenu:
             elif event.key == pygame.K_DOWN or event.key == pygame.K_s:
                 self.selected_index = (self.selected_index + 2) % len(self.full_list)
                 return "updated"
+            elif event.key in [pygame.K_RETURN, pygame.K_z, pygame.K_SPACE, pygame.K_e]:
+                return "use"
             elif event.key in [pygame.K_ESCAPE, pygame.K_x, pygame.K_b, pygame.K_TAB]:
                 return "close"
         return None
@@ -630,38 +712,6 @@ class BackpackMenu:
                 p2 = (marker_x, marker_y + 6)
                 p3 = (marker_x + 10, marker_y)
                 pygame.draw.polygon(self.screen, (255, 215, 0), [p1, p2, p3])
-
-    def run(self, player, bg_snapshot, dialogue_system):
-        # 1. Physical Clear: Force disable any blockers
-        dialogue_system.active = False
-        
-        # 3. Fix: Event Residue Clearing (User Req)
-        pygame.event.pump()
-        pygame.event.clear()
-        
-        # Update list based on current player state
-        self.update_list(player)
-        
-        clock = pygame.time.Clock()
-        menu_running = True
-        
-        while menu_running:
-            # Event Loop - Strictly isolated
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT:
-                    return "quit"
-                
-                # 2. Fix: Ensure loop continues regardless of result (User Req)
-                result = self.handle_event(event)
-                if result == "close":
-                    menu_running = False
-            
-            # 2. Render Layer: Snapshot -> UI (Always Execute)
-            self.draw(bg_snapshot)
-            pygame.display.flip()
-            clock.tick(60)
-            
-        return "resume"
 
 class VolumeMenu:
     def __init__(self, screen):

@@ -2,7 +2,7 @@ import pygame
 import random
 import math
 from engine.config import *
-from entities.bullets import Bullet, PlasmaBlade, LaserNetworkLine, YellowBullet, UfoLaserColumn, ConveyorScrap, VerticalScrap
+from entities.bullets import Bullet, PlasmaBlade, LaserNetworkLine, YellowBullet, UfoLaserColumn, ConveyorScrap, VerticalScrap, GhostSlashZone
 from entities.particles import BattleDust, DebrisParticle
 
 
@@ -222,18 +222,18 @@ class BulletSpawnMixin:
                 for y in rows:
                     self.bullets.append(LaserNetworkLine(pygame.Rect(self.battle_box.left, y - 15, self.battle_box.width, 30), 'h'))
 
-        # Ghost Slash (Purple Plasma Blades)
+        # Ghost Slash (幽灵斩：半场预警斩杀 + 横向紫色激光增加躲避难度)
         if "ghost_slash" in self.active_skills:
-            if time_elapsed % 45 == 0: # Slightly slower than ruin cutting
+            if time_elapsed == 1:
+                self.bullets.append(GhostSlashZone(self.battle_box, "left"))
+            # 横向紫色激光（复用原幽灵斩弹幕，持续压制）
+            if time_elapsed % 45 == 0:
                 cycle = time_elapsed // 45
                 blade_width, blade_height = 150, 40
                 speed = 7 * self.bullet_speed_multiplier
                 spawn_y = random.randint(self.battle_box.top + 5, self.battle_box.bottom - blade_height - 5)
-                
-                # Dark Purple Colors
-                c_outer = (138, 43, 226) # Blue Violet
-                c_inner = (230, 230, 250) # Lavender
-                
+                c_outer = (138, 43, 226)   # Blue Violet
+                c_inner = (230, 230, 250)   # Lavender
                 if cycle % 2 == 0:
                     start_x = self.battle_box.left - blade_width
                     direction = 1
@@ -336,21 +336,36 @@ class BulletSpawnMixin:
                 # Bottom Wall (Move Up)
                 create_wall("BOTTOM", 0, self.battle_box.bottom + 20, False, 0, -speed)
 
-        # Samurai Gravity Jump (Skill C)
+        # Samurai Gravity Jump (Skill C) — 跳火：双缺口轮换（普通跳/蓄力跳）+ 单侧缺口
         if "samurai_gravity_jump" in self.active_skills:
-             
+
              # Fire Pillars
              if time_elapsed % 60 == 0: # Every second
-                 # Pillars from both sides
+                 wave = time_elapsed // 60
                  speed = 4 * self.bullet_speed_multiplier
-                 
-                 # Calculate gap Y
-                 # Jump Peak: h = v^2 / 2g. (-9)^2 / 1.2 = 81 / 1.2 = 67.5
-                 # So gap should be around bottom - 67.5
-                 jump_peak = (self.jump_strength * self.jump_strength) / (2 * self.gravity)
-                 gap_center_y = (self.battle_box.bottom - 5) - jump_peak
+
+                 # 红心贴地时中心距底边 = 心高32/2 + 边距5 = 21
+                 GROUND_CENTER = 21
+                 # 普通跳峰值：v=-9 → 81/1.2 = 67.5；蓄满跳峰值：v=-12 → 144/1.2 = 120
+                 normal_peak = (9 * 9) / (2 * self.gravity)
+                 charge_peak = (12 * 12) / (2 * self.gravity)
+
+                 # 缺口高度轮换：奇数波低缺口（普通跳）、偶数波高缺口（蓄满跳）
+                 if wave % 2 == 1:
+                     gap_center_y = (self.battle_box.bottom - GROUND_CENTER) - normal_peak
+                 else:
+                     gap_center_y = (self.battle_box.bottom - GROUND_CENTER) - charge_peak
                  gap_height = 50 # Size of gap
-                 
+
+                 # 单侧缺口：每 3 波出现一次单侧柱（左/右交替），其余双侧
+                 spawn_left = True
+                 spawn_right = True
+                 if wave % 3 == 0:
+                     if (wave // 3) % 2 == 0:
+                         spawn_right = False  # 只留左侧柱
+                     else:
+                         spawn_left = False   # 只留右侧柱
+
                  # Function to create pillar
                  def create_pillar(start_x, move_x):
                      # Iterate vertical positions
@@ -359,12 +374,14 @@ class BulletSpawnMixin:
                          # Check gap
                          if gap_center_y - gap_height/2 < y < gap_center_y + gap_height/2:
                              continue
-                         
+
                          b = Bullet(pygame.Rect(start_x, y, 16, 16), move_x, 0, (255, 69, 0), b_type="fire")
                          self.bullets.append(b)
-                 
-                 create_pillar(self.battle_box.left - 20, speed)
-                 create_pillar(self.battle_box.right + 20, -speed)
+
+                 if spawn_left:
+                     create_pillar(self.battle_box.left - 20, speed)
+                 if spawn_right:
+                     create_pillar(self.battle_box.right + 20, -speed)
 
         # Flash Cut (Fast Lasers)
         if "flash_cut" in self.active_skills:
@@ -513,3 +530,19 @@ class BulletSpawnMixin:
                 self.bullets.append(VerticalScrap(
                     pygame.Rect(sx, sy, scrap_w, scrap_h), vy,
                     self.battle_box.top, self.battle_box.bottom))
+
+        # 弹簧振子：屏幕上下飞来的竖直激光线（复用机凯种·常量的 LaserNetworkLine，贯穿原战斗框高度）
+        if "spring_oscillator" in self.active_skills:
+            if not hasattr(self, 'spring_spawn_timer'):
+                self.spring_spawn_timer = 0
+            self.spring_spawn_timer += 1
+            if self.spring_spawn_timer % 70 == 0:
+                x = random.randint(self.battle_box.left + 20, self.battle_box.right - 40)
+                if hasattr(self, 'original_battle_box') and self.original_battle_box:
+                    full_top = self.original_battle_box.top
+                    full_h = self.original_battle_box.height
+                else:
+                    full_top = self.battle_box.top
+                    full_h = self.battle_box.height
+                self.bullets.append(LaserNetworkLine(
+                    pygame.Rect(x - 15, full_top, 30, full_h), 'v'))

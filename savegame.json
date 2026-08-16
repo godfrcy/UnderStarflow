@@ -1,25 +1,40 @@
 {
+    "difficulty": "standard",
     "player": {
-        "hp": 20,
-        "max_hp": 20,
-        "level": 1,
-        "exp": 20,
+        "hp": 47,
+        "max_hp": 47,
+        "level": 10,
+        "exp": 30,
         "max_exp": 100,
-        "attack": 10,
-        "x": 342,
-        "y": 386,
+        "attack": 28,
+        "x": 387,
+        "y": 349,
         "inventory": [
+            {
+                "name": "测试",
+                "type": "consumable",
+                "description": "测试道具，使用后造成1000点伤害。",
+                "count": 1
+            },
             {
                 "name": "投掷电池",
                 "type": "battery",
                 "value": 1,
                 "description": "极不稳定的电池，可以投掷。",
+                "count": 3
+            },
+            {
+                "id": "homing_beacon",
+                "name": "归航信标",
+                "type": "key_item",
+                "description": "发出归航信号，将你传送到任意已激活的篝火。无限使用。",
                 "count": 1
             },
             {
-                "name": "测试",
-                "type": "consumable",
-                "description": "测试道具，使用后造成1000点伤害。",
+                "name": "黑色游侠的动力炉",
+                "type": "key_item",
+                "description": "黑游侠的核心部件",
+                "tag": "boss_trophy",
                 "count": 1
             },
             {
@@ -30,15 +45,30 @@
                 "count": 1
             },
             {
-                "name": "鬼武士的断刃",
-                "type": "key_item",
-                "description": "散发着不详气息的断刃"
+                "id": "nano_repair_small",
+                "name": "纳米修复液(小)",
+                "type": "consumable",
+                "description": "纳米修复液。使用后每回合回复5点生命值，持续3回合。",
+                "count": 1
             },
             {
-                "id": "emp_pulse",
-                "name": "电磁脉冲",
-                "type": "consumable",
-                "description": "释放一次电磁脉冲，瓦解失败之作的秒杀机制。"
+                "name": "双生舞怜的动力炉",
+                "type": "key_item",
+                "description": "双生舞怜的核心部件",
+                "tag": "boss_trophy",
+                "count": 1
+            },
+            {
+                "name": "鬼武士的动力炉",
+                "type": "key_item",
+                "description": "鬼武士的核心部件",
+                "tag": "boss_trophy",
+                "count": 1
+            },
+            {
+                "name": "失败之作的破损动力炉",
+                "type": "key_item",
+                "description": "失败之作的核心部件（已破损，无法解析）"
             }
         ],
         "battery_count": 3
@@ -49,23 +79,52 @@
         "show_terminal_dialog": false,
         "activated_bonfires": [
             "start",
+            "base_1",
             "pipe_nightmare_3",
-            "pipe_ascent_2"
+            "pipe_ascent_2",
+            "star_sea_plaza"
         ],
         "collected_items": [
             "snow_1_2_battery_01",
+            "base_1_homing_beacon",
+            "base_4_nano_repair_01",
+            "pipe_1_emergency_fuse",
+            "pipe_3_1_nano_repair_01",
             "emp_pulse"
         ],
         "cleared_bosses": [
+            "base_5_boss",
+            "pipe_3_2_boss",
             "pipe_2_2_boss"
         ],
-        "last_rest_map_id": "pipe_ascent_2",
+        "last_rest_map_id": "star_sea_plaza",
         "last_rest_pos": [
-            384,
-            384
+            387,
+            349
         ],
-        "current_map_id": "pipe_ascent_2",
+        "current_map_id": "star_sea_plaza",
         "last_entry_type": "right",
-        "failure_emp_used": false
+        "failure_emp_used": true,
+        "seen_lines": [
+            "area:start",
+            "encounter:variable",
+            "area:base_1",
+            "encounter:machine",
+            "encounter:rebel",
+            "encounter:rebel_soldier",
+            "encounter:black_ranger",
+            "encounter:berserk",
+            "area:pipe_nightmare_3",
+            "encounter:abandoned_robot",
+            "encounter:ufo",
+            "encounter:twin_dancer",
+            "encounter:ghost_samurai",
+            "area:pipe_ascent_1",
+            "item:emp_pulse",
+            "encounter:failure",
+            "area:star_sea_plaza"
+        ],
+        "final_boss_defeated": false,
+        "mercy_unlocked": false
     }
 }

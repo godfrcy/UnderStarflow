@@ -4,11 +4,12 @@ import os
 
 # --- Save/Load System ---
 
-def save_game(player, game_state, current_map_id):
+def save_game(player, game_state, current_map_id, difficulty="explore"):
     """
     Save game data to savegame.json using atomic write to prevent corruption.
     """
     data = {
+        "difficulty": difficulty,
         "player": {
             "hp": player.hp,
             "max_hp": player.max_hp,
@@ -69,7 +70,7 @@ def load_game(player, game_state):
     """
     if not os.path.exists("savegame.json"):
         print("No save file found.")
-        return False, "start"
+        return False, "start", "explore"
 
     try:
         with open("savegame.json", "r", encoding='utf-8') as f:
@@ -80,12 +81,15 @@ def load_game(player, game_state):
             raise ValueError("Invalid save file structure")
 
         p_data = data["player"]
-        player.hp = p_data.get("hp", player.max_hp)
-        player.max_hp = p_data.get("max_hp", player.max_hp)
         player.level = p_data.get("level", 1)
         player.exp = p_data.get("exp", 0)
-        player.max_exp = p_data.get("max_exp", 100)
-        player.attack = p_data.get("attack", 10)
+        # 经验需求随等级递增，读取时按等级重算（忽略旧档的固定 max_exp）
+        player.max_exp = 10 * player.level
+        # 数值大换血：HP +3/级、ATK +2/级，读档按等级重算（旧档 +10/+10 自动迁移）
+        player.max_hp = 20 + (player.level - 1) * 3
+        player.attack = 10 + (player.level - 1) * 2
+        # 旧档满级 hp 可能达 210，收敛到新上限 77
+        player.hp = min(p_data.get("hp", player.max_hp), player.max_hp)
         player.rect.x = p_data.get("x", 128 * 2)
         player.rect.y = p_data.get("y", 128 * 5)
         player.inventory = p_data.get("inventory", [])
@@ -118,13 +122,14 @@ def load_game(player, game_state):
         game_state.final_boss_defeated = g_data.get("final_boss_defeated", False)
         game_state.mercy_unlocked = g_data.get("mercy_unlocked", False)
         map_id = g_data.get("current_map_id", "start")
+        difficulty = data.get("difficulty", "explore")
 
         print("Game Loaded Successfully.")
-        return True, map_id
+        return True, map_id, difficulty
 
     except json.JSONDecodeError:
         print("Error: Save file is corrupted (JSON Decode Error).")
-        return False, "start"
+        return False, "start", "explore"
     except Exception as e:
         print(f"Failed to load game: {e}")
-        return False, "start"
+        return False, "start", "explore"

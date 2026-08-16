@@ -36,7 +36,7 @@ class Player(pygame.sprite.Sprite):
         self.has_new_item = False # Notification flag for UI
         self.exp = 0
         self.level = 1
-        self.max_exp = 100
+        self.max_exp = 10          # 升到下一级所需经验（LV1→2 要 10，随等级递增）
         self.attack = 10
         self.battery_count = 3
         
@@ -224,6 +224,8 @@ class Player(pygame.sprite.Sprite):
         
         # 物品栏
         self.inventory = [] # 初始物品为空
+        # 测试道具「测试2」：百分比伤害，打掉敌人一半血（不消耗）
+        self.add_item({"name": "测试2", "type": "consumable", "description": "百分比伤害，打掉敌人一半血"})
         self.battery_count = 3
         self.max_battery_count = 3
 
@@ -360,16 +362,19 @@ class Player(pygame.sprite.Sprite):
 
     def gain_exp(self, amount):
         self.exp += amount
-        # Check for level up (only for levels < 10)
-        while self.level < 10 and self.exp >= self.max_exp:
+        # 满级 20（致敬 UT），经验需求随等级递增
+        while self.level < 20 and self.exp >= self.max_exp:
             self.exp -= self.max_exp
             self.level_up()
             
     def level_up(self):
         self.level += 1
-        self.max_hp += 10
-        self.attack += 10
-        self.hp = self.max_hp # Restore HP on level up
+        self.max_exp = 10 * self.level  # 升到下一级所需递增：10×当前等级
+        # 数值大换血：HP +3/级（满级 77，容错克制）、ATK +2/级（满级 48，不秒杀）
+        self.max_hp += 3
+        self.attack += 2
+        # 升级只补本次成长量(+3)，不回满——补给（回满）仅由篝火提供，鼓励多回篝火
+        self.hp = min(self.hp + 3, self.max_hp)
         print(f"Level Up! Now Level {self.level}. HP: {self.max_hp}, ATK: {self.attack}")
 
     def consolidate_inventory(self):

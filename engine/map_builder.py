@@ -119,7 +119,7 @@ def spawn_map_content(map_id, config, extra_obstacles, game_state, tile_manager,
         enemy_id_1 = "pipe_nightmare_1_laser"
         if enemy_id_1 not in game_state.temp_killed_enemies:
             # Restore to previous asset
-            enemy = OverworldEnemy(128 * 5, 128 * 5, "characters/enemies/variable_laser/variable_laser_透明.png", "variable_laser", is_grid=True)
+            enemy = OverworldEnemy(128 * 5, 128 * 5, "characters/enemies/variable_laser/variable_laser_transparent.png", "variable_laser", is_grid=True)
             enemy.battle_data = dict(BATTLE_DATA["berserk_laser"])
             enemies_group.add(enemy)
 
@@ -127,7 +127,7 @@ def spawn_map_content(map_id, config, extra_obstacles, game_state, tile_manager,
         enemy_id_2 = "pipe_nightmare_1_jump"
         if enemy_id_2 not in game_state.temp_killed_enemies:
             # Use transparent asset, NO flip correction
-            enemy = OverworldEnemy(128 * 3, 128 * 3, "characters/enemies/variable_jump/variable_jump透明.png", "variable_jump", is_grid=True)
+            enemy = OverworldEnemy(128 * 3, 128 * 3, "characters/enemies/variable_jump/variable_jump_transparent.png", "variable_jump", is_grid=True)
             enemy.battle_data = dict(BATTLE_DATA["berserk_jump"])
             enemies_group.add(enemy)
 

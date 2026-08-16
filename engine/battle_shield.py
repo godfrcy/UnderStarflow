@@ -97,7 +97,7 @@ class ShieldMixin:
                         # Blue Bullet -> Breaks Shield
                         self.shield_broken_timer = 180 # 3 seconds
                         self.shield_arrows.remove(arrow)
-                        if self.calibration_sfx: 
+                        if self.calibration_sfx:
                              self.calibration_sfx.set_volume(0.8)
                              self.calibration_sfx.play()
                     else:
@@ -115,7 +115,7 @@ class ShieldMixin:
                 
                 # Blue bullets do NO damage (only shield break effect)
                 if arrow_type != 'blue':
-                    self.player.hp -= 2 
+                    self.player.hp -= self._enemy_damage(2) 
                     self.damage_flash_timer = 5
                     if self.player.hp <= 0:
                         self.handle_player_death()

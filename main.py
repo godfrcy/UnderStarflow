@@ -21,7 +21,7 @@ from engine.monologue import area_line, encounter_line
 from entities.player import Player
 from entities.enemies import OverworldEnemy, Bonfire, FailureEnemy
 from entities.props import Prop
-from ui.menus import TitleScreen, ConfirmDialog, BonfireMenu, TeleportMenu, PauseMenu, VolumeMenu, BackpackMenu, StatsMenu, AnalyzeMenu, StrengthenMenu
+from ui.menus import TitleScreen, ConfirmDialog, BonfireMenu, TeleportMenu, PauseMenu, VolumeMenu, BackpackMenu, StatsMenu, AnalyzeMenu, StrengthenMenu, DifficultyMenu
 from ui.dialogue import DialogueSystem
 from ui.effects import SnowFlake, AreaTitle, DataDust, FogGate, FogWall, ExitGlow
 from ui.atmosphere import PipeAtmosphere, PulseAtmosphere, FogMaze
@@ -128,6 +128,7 @@ class Game:
 
         # UI Instances
         self.title_screen = TitleScreen(self.screen)
+        self.difficulty_menu = DifficultyMenu(self.screen)
         self.confirm_dialog = ConfirmDialog(self.screen)
         self.bonfire_menu = BonfireMenu(self.screen)
         self.pause_menu = PauseMenu(self.screen)
@@ -150,9 +151,11 @@ class Game:
         self.STATE_BATTLE = 2
         self.STATE_GAMEOVER = 3
         self.STATE_OPENING = 4
+        self.STATE_DIFFICULTY = 5
 
         self.current_state = self.STATE_TITLE
         self.gameover_timer = 0
+        self.difficulty = "explore"  # 当前难度：explore / standard（标准难度数值待定）
 
         # 开场白状态
         self.opening_index = 0
@@ -493,37 +496,18 @@ class Game:
 
             # --- State: Title Screen ---
             if self.current_state == self.STATE_TITLE:
-                if self.current_bgm != "audio/bgm/the tree.mp3":
-                    load_bgm("audio/bgm/the tree.mp3")
-                    self.current_bgm = "audio/bgm/the tree.mp3"
+                if self.current_bgm != "audio/bgm/the_tree.mp3":
+                    load_bgm("audio/bgm/the_tree.mp3")
+                    self.current_bgm = "audio/bgm/the_tree.mp3"
 
                 action = self.title_screen.run()
                 if action == "new_game":
-                    # Reset Game State
-                    self.game_state.activated_bonfires = ["start"]
-                    self.game_state.collected_items = []
-                    self.game_state.cleared_bosses = []
-                    self.game_state.temp_killed_enemies = []
-                    self.game_state.failure_emp_used = False
-                    self.game_state.mercy_unlocked = False
-                    self.game_state.last_rest_map_id = "start"
-                    self.game_state.last_rest_pos = (128 * 3, 128 * 5)
-
-                    # Reset Player State
-                    self.player.hp = 20
-                    self.player.max_hp = 20
-                    self.player.inventory = []
-                    self.player.exp = 0
-                    self.player.battery_count = 3
-                    self.grant_test_item()
-
-                    # 进入开场白（世界观/剧情交代），结束后再载入地图
-                    self.current_state = self.STATE_OPENING
-                    self.opening_index = 0
-                    self.opening_alpha = 0
+                    # 先进入难度选择，选完再走开场白
+                    self.current_state = self.STATE_DIFFICULTY
                 elif action == "continue":
-                    success, saved_map_id = load_game(self.player, self.game_state)
+                    success, saved_map_id, saved_difficulty = load_game(self.player, self.game_state)
                     if success:
+                        self.difficulty = saved_difficulty
                         self.grant_test_item()
                         self.current_map_id = saved_map_id
                         self.load_map(self.current_map_id)
@@ -537,6 +521,42 @@ class Game:
                         self.load_map(self.current_map_id)
                         self.area_title.show()
                 elif action == "quit":
+                    self.running = False
+
+            # --- State: Difficulty（新游戏难度选择，字幕播报前） ---
+            elif self.current_state == self.STATE_DIFFICULTY:
+                result = self.difficulty_menu.run()
+                if result in ("explore", "standard"):
+                    self.difficulty = result
+                    # Reset Game State
+                    self.game_state.activated_bonfires = ["start"]
+                    self.game_state.collected_items = []
+                    self.game_state.cleared_bosses = []
+                    self.game_state.temp_killed_enemies = []
+                    self.game_state.failure_emp_used = False
+                    self.game_state.mercy_unlocked = False
+                    self.game_state.seen_lines = []  # 新游戏重置独白去重，否则沿用旧档会导致遭遇解说被跳过
+                    self.game_state.last_rest_map_id = "start"
+                    self.game_state.last_rest_pos = (128 * 3, 128 * 5)
+
+                    # Reset Player State（标准难度数值待定，暂与探索难度一致）
+                    self.player.hp = 20
+                    self.player.max_hp = 20
+                    self.player.level = 1
+                    self.player.max_exp = 10
+                    self.player.attack = 10
+                    self.player.inventory = []
+                    self.player.exp = 0
+                    self.player.battery_count = 3
+                    self.grant_test_item()
+
+                    # 进入开场白（世界观/剧情交代），结束后再载入地图
+                    self.current_state = self.STATE_OPENING
+                    self.opening_index = 0
+                    self.opening_alpha = 0
+                elif result == "back":
+                    self.current_state = self.STATE_TITLE
+                elif result == "quit":
                     self.running = False
 
             # --- State: Opening（新游戏开场白） ---
@@ -644,10 +664,12 @@ class Game:
                                     self.volume_menu.run(bg_surf, self.update_all_volumes)
                                 elif action == "backpack":
                                     self.dialogue_system.active = False
-                                    self.backpack_menu.run(self.player, self.screen.copy(), self.dialogue_system)
+                                    backpack_result = self.backpack_menu.run(self.player, self.screen.copy(), self.dialogue_system)
+                                    if backpack_result == "use_homing_beacon":
+                                        self._use_homing_beacon()
 
                             elif event.key == pygame.K_F5:
-                                save_game(self.player, self.game_state, self.current_map_id)
+                                save_game(self.player, self.game_state, self.current_map_id, self.difficulty)
                             elif event.key == pygame.K_t:
                                 self._use_homing_beacon()
                             elif event.key == pygame.K_SPACE:
@@ -738,12 +760,12 @@ class Game:
                                 self.player.rect.left = 20 # Push back
                                 self.dialogue_system.start_dialogue(["检测到高温区域阻断。", "需要【液氮冷却核心】才能通过。"])
 
-                        # 2-2 -> 上升管道(通往地表)：需先击败鬼武士，左出口才解锁
+                        # 2-2 -> 上升管道(通往地表)：需先击败旧时代智械·鬼武士，左出口才解锁
                         if self.current_map_id == "pipe_nightmare_2_2" and prev_map == "pipe_ascent_1":
                             if "pipe_2_2_boss" not in self.game_state.cleared_bosses:
                                 can_exit = False
                                 self.player.rect.left = 20 # Push back
-                                self.dialogue_system.start_dialogue(["这条路的出口被武士的怨念封锁了。", "需要先击败鬼武士。"])
+                                self.dialogue_system.start_dialogue(["这条路的出口被武士的怨念封锁了。", "需要先击败旧时代智械·鬼武士。"])
 
                         if prev_map and can_exit:
                             self.run_transition(prev_map, "right")
@@ -1049,7 +1071,7 @@ class Game:
                                     result = self.bonfire_menu.run(bg_surf, show_analyze=show_analyze)
 
                                     if result == "save":
-                                        save_game(self.player, self.game_state, self.current_map_id)
+                                        save_game(self.player, self.game_state, self.current_map_id, self.difficulty)
                                         self.save_success_timer = 30 # Show "Game Saved" for 0.5 second (30 frames)
                                     elif result == "teleport":
                                          # Teleport Logic
@@ -1098,6 +1120,7 @@ class Game:
                                     self.dialogue_system.start_dialogue(lines)
                                 else:
                                     self.current_state = self.STATE_BATTLE
+                                    self.battle_manager.difficulty = self.difficulty
                                     self.battle_manager.start_battle(self.player, battle_data)
 
                 # Custom Boundary Check for Pipe Nightmare 1-3 (Bottom Exit)
@@ -1336,8 +1359,8 @@ class Game:
                             self.player.rect.y += 50
 
                         self.player.battle_cooldown = 180
-                        load_bgm("audio/bgm/city ruins.mp3")
-                        self.current_bgm = "audio/bgm/city ruins.mp3"
+                        load_bgm("audio/bgm/city_ruins.mp3")
+                        self.current_bgm = "audio/bgm/city_ruins.mp3"
 
             # --- State: GameOver ---
             elif self.current_state == self.STATE_GAMEOVER:
@@ -1374,8 +1397,8 @@ class Game:
                     self.area_title.show()
                     self.current_state = self.STATE_OVERWORLD
 
-                    load_bgm("audio/bgm/city ruins.mp3")
-                    self.current_bgm = "audio/bgm/city ruins.mp3"
+                    load_bgm("audio/bgm/city_ruins.mp3")
+                    self.current_bgm = "audio/bgm/city_ruins.mp3"
 
         pygame.quit()
         sys.exit()

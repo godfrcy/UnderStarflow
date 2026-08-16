@@ -76,7 +76,7 @@ def verify_leveling():
     else:
         print("FAIL: Did not level up.")
         
-    if p.max_hp == 30 and p.attack == 20: # Initial 20/10 -> +10/+10
+    if p.max_hp == 23 and p.attack == 12: # Initial 20/10 -> +3/+2
         print("PASS: Stats increased correctly.")
     else:
         print(f"FAIL: Stats incorrect (HP={p.max_hp}, ATK={p.attack}).")

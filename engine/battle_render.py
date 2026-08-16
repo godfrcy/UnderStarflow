@@ -69,7 +69,8 @@ class RenderMixin:
         # Draw Battle Box
         box_draw_rect = self.battle_box.move(self.shake_offset)
         box_color = (0, 255, 255) if "reroute" in self.active_skills else (255, 255, 255)
-        pygame.draw.rect(self.screen, box_color, box_draw_rect, 4)
+        if not getattr(self, 'is_dual_shield', False) and not getattr(self, 'is_failure_gravity_hall', False):
+            pygame.draw.rect(self.screen, box_color, box_draw_rect, 4)
         
         # Draw Magnets
         for magnet in self.magnets:
@@ -162,6 +163,18 @@ class RenderMixin:
                 by = pivot[1] + r * math.cos(ang)
                 pygame.draw.line(self.screen, (140, 140, 150), (pivot[0], pivot[1]), (bx, by), 2)
                 pygame.draw.circle(self.screen, (170, 170, 180), (int(pivot[0]), int(pivot[1])), 4)
+
+            # 弹簧振子：横置窄条，红心左右各一条水平像素弹簧（左/右两端），随水平振动伸缩
+            if "spring_oscillator" in self.active_skills:
+                strip = self.battle_box.move(self.shake_offset)
+                hcx = self.heart_rect.centerx + self.shake_offset[0]
+                cy = strip.centery
+                # 平衡线（虚线，指示简谐振动中心——竖直中线）
+                for y in range(strip.top + 4, strip.bottom - 4, 8):
+                    pygame.draw.line(self.screen, (90, 90, 100),
+                                     (strip.centerx, y), (strip.centerx, y + 4), 1)
+                self._draw_spring_h(self.screen, strip.left + 8, hcx, cy)
+                self._draw_spring_h(self.screen, hcx, strip.right - 8, cy)
 
             # 双生舞怜·苏联国徽单摆：金色地球 + 下半圆下摆（=摆锤轨道）+ 摆杆
             if "soviet_emblem" in self.active_skills:
@@ -305,14 +318,101 @@ class RenderMixin:
                     
                     pygame.draw.polygon(self.screen, color, points)
 
+            # 失败之作·镜像双心：左右两个对称区域（实线框）+ 中间挡板 + 蓝白箭头 + 双护盾（右心在下方红心 blit 后补画）
+            if getattr(self, 'is_dual_shield', False):
+                lr = self.dual_left_rect.move(self.shake_offset)
+                rr = self.dual_right_rect.move(self.shake_offset)
+                pygame.draw.rect(self.screen, (255, 255, 255), lr, 2)
+                pygame.draw.rect(self.screen, (255, 255, 255), rr, 2)
+                # 中间挡板（两个区域之间）
+                mid_x = self.battle_box.centerx + self.shake_offset[0]
+                pygame.draw.rect(self.screen, (120, 120, 130), (mid_x - 3, lr.top, 6, lr.height))
+                # 蓝白箭头（复用能量护盾的箭头绘制：dir 定朝向，type 定颜色）
+                for b in self.dual_bullets:
+                    p = [int(b['pos'][0]) + self.shake_offset[0], int(b['pos'][1]) + self.shake_offset[1]]
+                    size = 10
+                    if b['dir'] == "UP":
+                        points = [[p[0], p[1] + size], [p[0] - size / 2, p[1] - size], [p[0] + size / 2, p[1] - size]]
+                    elif b['dir'] == "DOWN":
+                        points = [[p[0], p[1] - size], [p[0] - size / 2, p[1] + size], [p[0] + size / 2, p[1] + size]]
+                    elif b['dir'] == "LEFT":
+                        points = [[p[0] + size, p[1]], [p[0] - size, p[1] - size / 2], [p[0] - size, p[1] + size / 2]]
+                    elif b['dir'] == "RIGHT":
+                        points = [[p[0] - size, p[1]], [p[0] + size, p[1] - size / 2], [p[0] + size, p[1] + size / 2]]
+                    color = (0, 100, 255) if b.get('type', 'white') == 'blue' else (255, 255, 255)
+                    pygame.draw.polygon(self.screen, color, points)
+                # 双护盾（破损时变浅天蓝，提示该侧已失效——与能量护盾一致）
+                lc = (int(self.dual_left_center[0] + self.shake_offset[0]), int(self.dual_left_center[1] + self.shake_offset[1]))
+                rc = (int(self.dual_right_center[0] + self.shake_offset[0]), int(self.dual_right_center[1] + self.shake_offset[1]))
+                lshield_col = (135, 206, 250) if getattr(self, 'left_shield_broken_timer', 0) > 0 else (0, 100, 255)
+                rshield_col = (135, 206, 250) if getattr(self, 'right_shield_broken_timer', 0) > 0 else (0, 100, 255)
+                pygame.draw.rect(self.screen, lshield_col, self._dual_shield_rect(lc, self.left_shield_dir))
+                pygame.draw.rect(self.screen, rshield_col, self._dual_shield_rect(rc, self.right_shield_dir))
+
+            # 失败之作·重力走廊：横向长条（边框）+ 上下白色柱子（中间留缝隙）
+            if getattr(self, 'is_failure_gravity_hall', False):
+                hr = self.hall_rect.move(self.shake_offset)
+                pygame.draw.rect(self.screen, (255, 255, 255), hr, 2)
+                for p in self.hall_pillars:
+                    px = int(p['x']) + self.shake_offset[0]
+                    top_h = p['gap_top'] - self.hall_rect.top
+                    bot_h = self.hall_rect.bottom - (p['gap_top'] + p['gap_h'])
+                    # 上柱（从顶向下伸）
+                    pygame.draw.rect(self.screen, (255, 255, 255), (px, hr.top, 20, top_h))
+                    # 下柱（从底向上伸）
+                    pygame.draw.rect(self.screen, (255, 255, 255), (px, hr.top + top_h + p['gap_h'], 20, bot_h))
+
+            # 失败之作·5×5 激光列：绿色安全列 + 感叹号（频闪预警）+ 蓝色激光（覆盖非安全侧 4 列）
+            if getattr(self, 'is_failure_laser_grid', False):
+                gr = self.laser_grid_rect.move(self.shake_offset)
+                cw = int(self.laser_cell_w)
+                pygame.draw.rect(self.screen, (255, 255, 255), gr, 2)
+                if getattr(self, 'laser_gravity_phase', False):
+                    # 重力幽灵斩阶段：只保留外框，幽灵斩由 GroundSlash 自身渲染
+                    pass
+                else:
+                    # 绿色安全列（左下感叹号→最右列安全；右下感叹号→最左列安全）
+                    safe_x = gr.right - cw if self.laser_exclaim_side == 'left' else gr.left
+                    safe_surf = pygame.Surface((cw, gr.height), pygame.SRCALPHA)
+                    safe_surf.fill((120, 255, 120, 40))
+                    self.screen.blit(safe_surf, (int(safe_x), gr.top))
+                    # 感叹号（左下/右下角），warn 状态频闪 2 次
+                    if self.laser_state == 'warn':
+                        if (self.laser_timer // 18) % 2 == 0:
+                            ecx = gr.left + cw / 2.0 if self.laser_exclaim_side == 'left' else gr.right - cw / 2.0
+                            ecy = gr.bottom - 30
+                            bang = get_font(40).render("!", True, (255, 220, 60))
+                            self.screen.blit(bang, bang.get_rect(center=(int(ecx), int(ecy))))
+                    # 蓝色激光条（active 状态）：苗条竖条从感叹号侧快速平移（竖条 + 白热核心）
+                    elif self.laser_state == 'active':
+                        bar_w = getattr(self, 'laser_bar_w', 30)
+                        bar_x = int(gr.left + (getattr(self, 'laser_bar_x', 0) - self.laser_grid_rect.left))
+                        laser_surf = pygame.Surface((bar_w, gr.height), pygame.SRCALPHA)
+                        laser_surf.fill((0, 120, 255, 170))
+                        self.screen.blit(laser_surf, (bar_x, gr.top))
+                        core_w = max(4, int(bar_w * 0.3))
+                        core = pygame.Surface((core_w, gr.height), pygame.SRCALPHA)
+                        core.fill((180, 220, 255, 220))
+                        self.screen.blit(core, (int(bar_x + bar_w / 2 - core_w / 2), gr.top))
+
             if self.damage_flash_timer > 0:
                 self.damage_flash_timer -= 1
                 flash_surf = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
                 flash_surf.fill((255, 0, 0))
                 flash_surf.set_alpha(100)
                 self.screen.blit(flash_surf, (0, 0))
-            self.screen.blit(self.heart_img, self.heart_rect.move(self.shake_offset))
-            
+            # 重力走廊全程：心保持旋转 90°（下方朝右），不恢复自然朝向
+            if getattr(self, 'is_failure_gravity_hall', False):
+                heart_img = getattr(self, 'hall_heart_img', None) or self.heart_img
+            else:
+                heart_img = self.heart_img
+            self.screen.blit(heart_img, self.heart_rect.move(self.shake_offset))
+
+            # 失败之作·镜像双心：右心（左心已由上方主红心 blit 画出）
+            if getattr(self, 'is_dual_shield', False):
+                rheart = self.heart_img.get_rect(center=(int(self.dual_right_center[0] + self.shake_offset[0]), int(self.dual_right_center[1] + self.shake_offset[1])))
+                self.screen.blit(self.heart_img, rheart)
+
             # --- Debug Draw Circular Hitbox ---
             # Toggle this via a flag if needed, currently always drawing for verification as requested
             heart_draw_pos = self.heart_rect.move(self.shake_offset)
@@ -371,6 +471,19 @@ class RenderMixin:
             wobble = int(8 * math.sin(t / 6.0))
             wrect = word.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + wobble))
             self.screen.blit(word, wrect)
+
+    def _draw_spring_h(self, screen, x_left, x_right, y, color=(120, 200, 255), amp=7):
+        """在固定 y 坐标处画一段水平像素弹簧（锯齿折线），从 x_left 连到 x_right。"""
+        if x_right - x_left < 2:
+            return
+        segs = max(2, int((x_right - x_left) // 10))
+        pts = [(x_left, y)]
+        for i in range(1, segs):
+            xx = x_left + (x_right - x_left) * i / segs
+            yy = y + (amp if i % 2 == 1 else -amp)
+            pts.append((xx, yy))
+        pts.append((x_right, y))
+        pygame.draw.lines(screen, color, False, pts, 2)
 
     def draw_ui(self, box_draw_rect):
         status_y = 620

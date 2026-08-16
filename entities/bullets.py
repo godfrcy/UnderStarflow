@@ -1,6 +1,7 @@
 import pygame
 import math
 import random
+import os
 from engine.config import PLASMA_BLADE_DAMAGE
 
 class Bullet:
@@ -204,7 +205,7 @@ class LaserNetworkLine:
         self.active_duration = active_duration
         self.state = "warning" # warning, active, dead
         self.damaging = False
-        self.damage = 10
+        self.damage = 6  # 普通小怪(机凯种·常量/义军男)的激光网：弱于 boss 幽灵斩/地面斩的 10
         self.type = "laser_network"
         self.alive = True
         
@@ -256,6 +257,231 @@ class LaserNetworkLine:
                 pygame.draw.line(screen, (255, 255, 255), (draw_rect.left, draw_rect.centery), (draw_rect.right, draw_rect.centery), 2)
             else:
                 pygame.draw.line(screen, (255, 255, 255), (draw_rect.centerx, draw_rect.top), (draw_rect.centerx, draw_rect.bottom), 2)
+
+
+class GhostSlashZone:
+    """鬼武士·幽灵斩：战斗框竖分左右两半，轮流预警（紫色方框+感叹号闪烁 1s），
+    然后播放 UT 挥刀素材（左半场 a、右半场 b，染成紫色）作为斩击特效，
+    玩家身处该半场则受 10 点伤害，循环到回合结束。伤害只在挥刀第一帧结算。"""
+    WARN_DURATION = 60                 # 预警闪烁 1s
+    SLASH_COLOR = (200, 100, 255)      # 素材染成的紫色
+    _frames_cache = {}                 # 类级缓存：(folder, color, size) -> [surface, ...]
+
+    def __init__(self, box, side="left"):
+        self.box = box
+        self.side = side               # "left" / "right"
+        self.state = "warn"            # warn -> slash -> (换边) warn -> ...
+        self.timer = 0
+        self.damaging = False
+        self.damage = 10
+        self.type = "ghost_slash"
+        self.alive = True
+        size = (box.width, box.height)
+        # 预加载挥刀素材（左右半场统一用 b，染色 + 缩放，类级缓存复用）
+        self.frames = self._load_frames("b", self.SLASH_COLOR, size)
+        self._update_rect()
+        # 预渲染感叹号（紫色）
+        self.bang_surf = None
+        try:
+            from engine.utils import get_font
+            self.bang_surf = get_font(48).render("!", True, (225, 190, 255))
+        except Exception:
+            pass
+
+    @classmethod
+    def _load_frames(cls, folder, color, size):
+        key = (folder, color, size)
+        if key in cls._frames_cache:
+            return cls._frames_cache[key]
+        frames = []
+        try:
+            from engine.utils import resource_path
+            i = 0
+            while True:
+                p = resource_path(f"effects/slash/{folder}{i:02d}.png")
+                if not os.path.exists(p):
+                    break
+                img = pygame.image.load(p).convert_alpha()
+                img = pygame.transform.smoothscale(img, size)
+                # 染色：用 alpha 蒙版把素材整体换成纯紫色（SRCALPHA，便于取包围盒居中）
+                mask = pygame.mask.from_surface(img)
+                surf = pygame.Surface(size, pygame.SRCALPHA)
+                mask.to_surface(surface=surf, setcolor=(color[0], color[1], color[2], 255), unsetcolor=(0, 0, 0, 0))
+                frames.append(surf)
+                i += 1
+        except Exception:
+            pass
+        if not frames:
+            # 兜底：无素材时用一帧半透明紫色面，避免空列表崩溃
+            fb = pygame.Surface(size, pygame.SRCALPHA)
+            fb.fill((color[0], color[1], color[2], 120))
+            frames.append(fb)
+        cls._frames_cache[key] = frames
+        return frames
+
+    def _update_rect(self):
+        mid = self.box.centerx
+        if self.side == "left":
+            self.rect = pygame.Rect(self.box.left, self.box.top, mid - self.box.left, self.box.height)
+        else:
+            self.rect = pygame.Rect(mid, self.box.top, self.box.right - mid, self.box.height)
+
+    def _start_slash(self):
+        self.state = "slash"
+        self.damaging = True            # 挥刀第一帧结算伤害
+        self.timer = 0
+
+    def update(self, target_rect=None, battle_box=None):
+        self.timer += 1
+        if self.state == "warn":
+            if self.timer >= self.WARN_DURATION:
+                self._start_slash()
+        elif self.state == "slash":
+            if self.timer >= 1:
+                self.damaging = False   # 仅第一帧结算，避免连击
+            if self.timer >= len(self.frames):
+                self.side = "right" if self.side == "left" else "left"
+                self._update_rect()
+                self.state = "warn"
+                self.timer = 0
+
+    def draw(self, screen, offset=(0, 0)):
+        ox, oy = offset
+        if self.state == "warn":
+            r = self.rect.move(ox, oy)
+            # 紫色方框：半透明填充闪烁
+            flash = int((math.sin(pygame.time.get_ticks() * 0.025) + 1) * 55) + 30  # 30~140
+            s = pygame.Surface((r.width, r.height), pygame.SRCALPHA)
+            s.fill((138, 43, 226, flash))
+            screen.blit(s, (r.x, r.y))
+            pygame.draw.rect(screen, (200, 120, 255), r, 3)
+            # 感叹号闪烁
+            if self.bang_surf and (pygame.time.get_ticks() // 140) % 2 == 0:
+                screen.blit(self.bang_surf, self.bang_surf.get_rect(center=r.center))
+        elif self.state == "slash":
+            # 播放挥刀素材帧，攻击痕迹居中于当前预警半场
+            idx = min(self.timer, len(self.frames) - 1)
+            if 0 <= idx < len(self.frames):
+                surf = self.frames[idx]
+                br = surf.get_bounding_rect()
+                if br.width > 0:
+                    blit_x = self.rect.centerx - br.centerx  # 攻击形状中心对齐半场中心
+                else:
+                    blit_x = self.box.left
+                screen.blit(surf, (blit_x + ox, self.box.top + oy))
+
+
+class GroundSlash:
+    """失败之作·幽灵斩（屏幕最右边竖斩）：紧贴最右边的一条竖直判定范围，
+    预警带固定闪烁 2 次，第 3 次挥刀攻击（红色挥刀素材、不染色），心向左移动躲过。"""
+    WARN_DURATION = 72                  # 闪烁 2 次（每次亮 18 帧 + 灭 18 帧，快刀更利落）
+    FLASH_INTERVAL = 18
+    _frames_cache = {}
+
+    def __init__(self, hall_rect, slash_width=60, side='right'):
+        self.hall = hall_rect
+        self.slash_width = slash_width
+        self.side = side
+        if side == 'top':
+            # 顶部横带：紧贴最上边，覆盖整个走廊宽度（向上重力用）
+            self.rect = pygame.Rect(hall_rect.left, hall_rect.top,
+                                    hall_rect.width, slash_width)
+        elif side == 'left':
+            # 左墙竖带：紧贴最左边，覆盖整个走廊高度（向左重力用）
+            self.rect = pygame.Rect(hall_rect.left, hall_rect.top,
+                                    slash_width, hall_rect.height)
+        else:
+            # 右墙竖带：紧贴最右边，覆盖整个走廊高度
+            self.rect = pygame.Rect(hall_rect.right - slash_width, hall_rect.top,
+                                    slash_width, hall_rect.height)
+        self.state = "warn"
+        self.timer = 0
+        self.damaging = False
+        self.damage = 10
+        self.type = "ground_slash"
+        self.alive = True
+        if side == 'top':
+            size = (hall_rect.width, slash_width)
+        else:
+            size = (slash_width, hall_rect.height)
+        self.frames = self._load_frames("b", size, rotate=(side != 'top'))
+        self.bang_surf = None
+        try:
+            from engine.utils import get_font
+            self.bang_surf = get_font(48).render("!", True, (255, 130, 130))
+        except Exception:
+            pass
+
+    @classmethod
+    def _load_frames(cls, folder, size, rotate=False):
+        key = (folder, size, rotate)
+        if key in cls._frames_cache:
+            return cls._frames_cache[key]
+        frames = []
+        try:
+            from engine.utils import resource_path
+            i = 0
+            while True:
+                p = resource_path(f"effects/slash/{folder}{i:02d}.png")
+                if not os.path.exists(p):
+                    break
+                img = pygame.image.load(p).convert_alpha()
+                if rotate:
+                    img = pygame.transform.smoothscale(img, (size[1], size[0]))
+                    img = pygame.transform.rotate(img, 90)   # 横斩素材转竖斩
+                else:
+                    img = pygame.transform.smoothscale(img, size)
+                frames.append(img)  # 不染色，红色原封不动
+                i += 1
+        except Exception:
+            pass
+        if not frames:
+            fb = pygame.Surface(size, pygame.SRCALPHA)
+            fb.fill((255, 60, 60, 140))
+            frames.append(fb)
+        cls._frames_cache[key] = frames
+        return frames
+
+    def _start_slash(self):
+        self.state = "slash"
+        self.damaging = True
+        self.timer = 0
+
+    def update(self, target_rect=None, battle_box=None):
+        self.timer += 1
+        if self.state == "warn":
+            if self.timer >= self.WARN_DURATION:
+                self._start_slash()
+        elif self.state == "slash":
+            if self.timer >= 1:
+                self.damaging = False
+            if self.timer >= len(self.frames):
+                self.alive = False
+
+    def draw(self, screen, offset=(0, 0)):
+        ox, oy = offset
+        r = self.rect.move(ox, oy)
+        if self.state == "warn":
+            # 固定闪烁：亮 18 帧 / 灭 18 帧，共 2 次完整闪烁，第 3 次（slash）攻击
+            on = (self.timer // self.FLASH_INTERVAL) % 2 == 0
+            if on:
+                s = pygame.Surface((r.width, r.height), pygame.SRCALPHA)
+                s.fill((255, 60, 60, 120))
+                screen.blit(s, (r.x, r.y))
+                pygame.draw.rect(screen, (255, 100, 100), r, 3)
+            if self.bang_surf:
+                screen.blit(self.bang_surf, self.bang_surf.get_rect(center=r.center))
+        elif self.state == "slash":
+            idx = min(self.timer, len(self.frames) - 1)
+            if 0 <= idx < len(self.frames):
+                surf = self.frames[idx]
+                if self.side == 'top':
+                    # 顶部横斩：素材正好铺满横带
+                    screen.blit(surf, (self.rect.left + ox, self.rect.top + oy))
+                else:
+                    br = surf.get_bounding_rect()
+                    blit_x = self.rect.centerx - br.centerx if br.width > 0 else self.rect.left
+                    screen.blit(surf, (blit_x + ox, self.rect.top + oy))
 
 
 class UfoLaserColumn:

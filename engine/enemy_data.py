@@ -2,8 +2,8 @@
 
 # 废弃机器人：1-3 与 2-3 两份实例共享同一份数据，id 在生成时区分
 ABANDONED_ROBOT_DATA = {
-    "name": "废弃机器人",
-    "hp": 80,
+    "name": "废弃机器人(Ⅰ型)",
+    "hp": 50,
     "skills": ["escape_dust"],
     "acts": ["观察"],
     "image_folder": "characters/enemies/abandoned_robot",
@@ -14,8 +14,8 @@ ABANDONED_ROBOT_DATA = {
 
 # 废弃机器人MK2：管道噩梦3-1 的加强版废弃机体，16 帧全用
 ABANDONED_ROBOT_MK2_DATA = {
-    "name": "废弃机器人MK2",
-    "hp": 100,
+    "name": "废弃机器人(Ⅱ型)",
+    "hp": 80,
     "skills": ["conveyor_belt", "pendulum"],
     "acts": ["观察"],
     "image_folder": "characters/enemies/abandoned_robot_mk2",
@@ -31,7 +31,7 @@ ABANDONED_ROBOT_MK2_DATA = {
 TWIN_DANCER_DATA = {
     "name": "双生舞怜",
     "boss_id": "pipe_3_2_boss",
-    "hp": 160,
+    "hp": 180,
     "skills": ["dancer_dash", "dancer_chase", "soviet_emblem"],
     "acts": ["观察"],
     "image_folder": "characters/enemies/twin_dancer",
@@ -44,8 +44,8 @@ TWIN_DANCER_DATA = {
 
 # UFO：管道噩梦3-1 的飞行器（占位战斗数据，技能/数值 待补充）
 UFO_DATA = {
-    "name": "UFO",
-    "hp": 90,
+    "name": "斯普特尼克",
+    "hp": 60,
     "skills": ["ufo_tractor"],
     "acts": ["观察"],
     "image_folder": "characters/enemies/ufo",
@@ -58,9 +58,9 @@ BATTLE_DATA = {
     "ghost_samurai": {
         "id": "pipe_2_2_boss",
         "boss_id": "pipe_2_2_boss",
-        "name": "鬼武士",
-        "hp": 120,
-        "skills": ["dark_orb", "samurai_fire_walls", "samurai_gravity_jump"],
+        "name": "旧时代智械·鬼武士",
+        "hp": 130,
+        "skills": ["dark_orb", "samurai_fire_walls", "samurai_gravity_jump", "ghost_slash"],
         "acts": ["看破"],
         "image_folder": "characters/enemies/samurai_ghost",
         "image_prefix": "samurai_ghost",
@@ -69,8 +69,8 @@ BATTLE_DATA = {
     },
     "variable": {
         "id": "snow_1_2_variable",
-        "name": "变量",
-        "hp": 50,
+        "name": "机凯种·变量",
+        "hp": 30,
         "skills": ["laser", "cube", "random_particles"],
         "acts": ["嘲讽", "观察"],
         "image_folder": "characters/enemies/berserk_variable/berserk_variable.png",
@@ -82,22 +82,22 @@ BATTLE_DATA = {
     },
     "berserk_laser": {
         "id": "pipe_nightmare_1_laser",
-        "name": "暴走变量_激光",
-        "hp": 80,
+        "name": "机凯种·变量",
+        "hp": 50,
         "skills": ["laser", "cube", "random_particles"],
         "acts": ["观察"],
-        "image_folder": "characters/enemies/variable_laser/variable_laser_透明.png",
+        "image_folder": "characters/enemies/variable_laser/variable_laser_transparent.png",
         "image_prefix": "variable_laser",
         "is_grid": True,
         "bgm": "audio/bgm/monster_song.mp3",
     },
     "berserk_jump": {
         "id": "pipe_nightmare_1_jump",
-        "name": "暴走变量_跳跃",
-        "hp": 80,
+        "name": "机凯种·变量",
+        "hp": 50,
         "skills": ["laser", "cube", "random_particles"],
         "acts": ["观察"],
-        "image_folder": "characters/enemies/variable_jump/variable_jump透明.png",
+        "image_folder": "characters/enemies/variable_jump/variable_jump_transparent.png",
         "image_prefix": "variable_jump",
         "is_grid": True,
         "bgm": "audio/bgm/monster_song.mp3",
@@ -105,7 +105,7 @@ BATTLE_DATA = {
     "failure": {
         "id": "failure_enemy_01",
         "name": "失败之作",
-        "hp": 100,
+        "hp": 120,
         "skills": ["noise_attack"],
         "acts": ["聆听"],
         "image_folder": "characters/enemies/failure_boss",
@@ -115,8 +115,8 @@ BATTLE_DATA = {
         "bgm_volume": 0.5,
     },
     "black_ranger": {
-        "name": "黑游侠EX",
-        "hp": 150,
+        "name": "义军头目",
+        "hp": 140,
         "skills": ["black_ranger_a", "black_ranger_b", "black_ranger_c"],
         "acts": ["嘲讽", "观察"],
         "boss_id": "base_5_boss",
@@ -128,8 +128,8 @@ BATTLE_DATA = {
     },
     "machine_soldier": {
         "id": "base_2_machine",
-        "name": "机凯种",
-        "hp": 50,
+        "name": "机凯种·常量",
+        "hp": 40,
         "skills": ["ruin_cutting_sequence", "laser_network"],
         "acts": ["嘲讽", "观察"],
         "image_folder": "characters/enemies/machine_soldier",
@@ -142,8 +142,8 @@ BATTLE_DATA = {
     },
     "admin": {
         "id": "base_3_admin",
-        "name": "admin",
-        "hp": 100,
+        "name": "机凯种·义军(女)",
+        "hp": 70,
         "skills": ["admin_shield", "admin_laser_cut", "admin_particle_sphere"],
         "acts": ["嘲讽", "观察"],
         "image_folder": "characters/enemies/rebel_leader",
@@ -154,9 +154,9 @@ BATTLE_DATA = {
     },
     "rebel_soldier": {
         "id": "base_4_rebel_soldier",
-        "name": "义军士兵",
-        "hp": 60,
-        "skills": ["ruin_cutting_sequence", "laser_network"],
+        "name": "机凯种·义军(男)",
+        "hp": 70,
+        "skills": ["laser_network", "spring_oscillator"],
         "acts": ["观察"],
         "image_folder": "characters/enemies/rebel_soldier",
         "image_prefix": "rebel_soldier",

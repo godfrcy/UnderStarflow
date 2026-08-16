@@ -45,7 +45,7 @@ ENCOUNTER_LINES = {
     "machine": "机凯种。和我一样，被主机操纵着。",
     "rebel": "格里菲斯的部队，为什么会出现在这里？",
     "rebel_soldier": "格里菲斯的残兵，装备是搜刮来的旧军火。",
-    "black_ranger": "黑游侠，旧时代遗留的武装机体。",
+    "black_ranger": "义军头目，旧时代遗留的武装机体。",
     "berserk": "劣等机器，在这里失控暴走了。",
     "abandoned_robot": "被主机淘汰的废弃机体，和我同款。",
     "ghost_samurai": "旧时代的守卫。它为什么会守在这里？",
